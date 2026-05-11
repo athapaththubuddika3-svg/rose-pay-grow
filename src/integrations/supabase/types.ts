@@ -14,7 +14,434 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      admin_sessions: {
+        Row: {
+          admin_id: string
+          created_at: string
+          expires_at: string
+          token: string
+        }
+        Insert: {
+          admin_id: string
+          created_at?: string
+          expires_at: string
+          token: string
+        }
+        Update: {
+          admin_id?: string
+          created_at?: string
+          expires_at?: string
+          token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "admin_sessions_admin_id_fkey"
+            columns: ["admin_id"]
+            isOneToOne: false
+            referencedRelation: "admins"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      admins: {
+        Row: {
+          created_at: string
+          email: string
+          id: string
+          password_hash: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          id?: string
+          password_hash: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          id?: string
+          password_hash?: string
+        }
+        Relationships: []
+      }
+      app_settings: {
+        Row: {
+          key: string
+          updated_at: string
+          value: Json
+        }
+        Insert: {
+          key: string
+          updated_at?: string
+          value: Json
+        }
+        Update: {
+          key?: string
+          updated_at?: string
+          value?: Json
+        }
+        Relationships: []
+      }
+      app_users: {
+        Row: {
+          balance: number
+          created_at: string
+          first_name: string | null
+          id: string
+          ip_address: string | null
+          last_name: string | null
+          notif_enabled: boolean
+          photo_url: string | null
+          ref_by: string | null
+          ref_code: string
+          suspend_reason: string | null
+          suspended: boolean
+          telegram_id: number
+          total_ads: number
+          total_earned: number
+          total_ref_commission: number
+          total_ref_count: number
+          total_tasks: number
+          total_withdraw: number
+          updated_at: string
+          username: string | null
+          wallet_address: string | null
+        }
+        Insert: {
+          balance?: number
+          created_at?: string
+          first_name?: string | null
+          id?: string
+          ip_address?: string | null
+          last_name?: string | null
+          notif_enabled?: boolean
+          photo_url?: string | null
+          ref_by?: string | null
+          ref_code: string
+          suspend_reason?: string | null
+          suspended?: boolean
+          telegram_id: number
+          total_ads?: number
+          total_earned?: number
+          total_ref_commission?: number
+          total_ref_count?: number
+          total_tasks?: number
+          total_withdraw?: number
+          updated_at?: string
+          username?: string | null
+          wallet_address?: string | null
+        }
+        Update: {
+          balance?: number
+          created_at?: string
+          first_name?: string | null
+          id?: string
+          ip_address?: string | null
+          last_name?: string | null
+          notif_enabled?: boolean
+          photo_url?: string | null
+          ref_by?: string | null
+          ref_code?: string
+          suspend_reason?: string | null
+          suspended?: boolean
+          telegram_id?: number
+          total_ads?: number
+          total_earned?: number
+          total_ref_commission?: number
+          total_ref_count?: number
+          total_tasks?: number
+          total_withdraw?: number
+          updated_at?: string
+          username?: string | null
+          wallet_address?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "app_users_ref_by_fkey"
+            columns: ["ref_by"]
+            isOneToOne: false
+            referencedRelation: "app_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      audit_log: {
+        Row: {
+          action: string
+          created_at: string
+          id: string
+          meta: Json | null
+          user_id: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          id?: string
+          meta?: Json | null
+          user_id?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          id?: string
+          meta?: Json | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "audit_log_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "app_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      referrals: {
+        Row: {
+          bonus_amount: number
+          claimed_at: string | null
+          created_at: string
+          id: string
+          referred_id: string
+          referrer_id: string
+          status: string
+        }
+        Insert: {
+          bonus_amount?: number
+          claimed_at?: string | null
+          created_at?: string
+          id?: string
+          referred_id: string
+          referrer_id: string
+          status?: string
+        }
+        Update: {
+          bonus_amount?: number
+          claimed_at?: string | null
+          created_at?: string
+          id?: string
+          referred_id?: string
+          referrer_id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "referrals_referred_id_fkey"
+            columns: ["referred_id"]
+            isOneToOne: true
+            referencedRelation: "app_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referrals_referrer_id_fkey"
+            columns: ["referrer_id"]
+            isOneToOne: false
+            referencedRelation: "app_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      reward_code_claims: {
+        Row: {
+          amount: number
+          code_id: string
+          created_at: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          code_id: string
+          created_at?: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          code_id?: string
+          created_at?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reward_code_claims_code_id_fkey"
+            columns: ["code_id"]
+            isOneToOne: false
+            referencedRelation: "reward_codes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reward_code_claims_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "app_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      reward_codes: {
+        Row: {
+          active: boolean
+          amount: number
+          code: string
+          created_at: string
+          id: string
+          max_uses: number
+          used_count: number
+        }
+        Insert: {
+          active?: boolean
+          amount: number
+          code: string
+          created_at?: string
+          id?: string
+          max_uses?: number
+          used_count?: number
+        }
+        Update: {
+          active?: boolean
+          amount?: number
+          code?: string
+          created_at?: string
+          id?: string
+          max_uses?: number
+          used_count?: number
+        }
+        Relationships: []
+      }
+      task_completions: {
+        Row: {
+          created_at: string
+          id: string
+          reject_reason: string | null
+          reviewed_at: string | null
+          screenshot_url: string | null
+          status: string
+          task_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          reject_reason?: string | null
+          reviewed_at?: string | null
+          screenshot_url?: string | null
+          status?: string
+          task_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          reject_reason?: string | null
+          reviewed_at?: string | null
+          screenshot_url?: string | null
+          status?: string
+          task_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_completions_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_completions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "app_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tasks: {
+        Row: {
+          active: boolean
+          amount: number
+          channel_url: string | null
+          channel_username: string | null
+          created_at: string
+          description: string | null
+          id: string
+          sort_order: number
+          title: string
+          type: string
+        }
+        Insert: {
+          active?: boolean
+          amount?: number
+          channel_url?: string | null
+          channel_username?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          sort_order?: number
+          title: string
+          type: string
+        }
+        Update: {
+          active?: boolean
+          amount?: number
+          channel_url?: string | null
+          channel_username?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          sort_order?: number
+          title?: string
+          type?: string
+        }
+        Relationships: []
+      }
+      withdrawals: {
+        Row: {
+          amount: number
+          created_at: string
+          id: string
+          reject_reason: string | null
+          reviewed_at: string | null
+          status: string
+          tx_id: string | null
+          user_id: string
+          wallet_address: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          id?: string
+          reject_reason?: string | null
+          reviewed_at?: string | null
+          status?: string
+          tx_id?: string | null
+          user_id: string
+          wallet_address: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          id?: string
+          reject_reason?: string | null
+          reviewed_at?: string | null
+          status?: string
+          tx_id?: string | null
+          user_id?: string
+          wallet_address?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "withdrawals_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "app_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
