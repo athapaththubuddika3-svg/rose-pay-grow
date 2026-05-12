@@ -36,8 +36,25 @@ async function authUser(initData: string, startParam?: string) {
   if (!existing) {
     let refByUser: any = null;
     if (sp) {
-      const { data } = await sb.from("app_users").select("id").eq("ref_code", sp).maybeSingle();
-      refByUser = data;
+      // Try telegram_id first (new format), then fall back to ref_code (legacy)
+      const spClean = sp.replace(/^ref_?/i, "").trim();
+      const asNum = Number(spClean);
+      if (Number.isFinite(asNum) && asNum > 0 && asNum !== tg.id) {
+        const { data } = await sb
+          .from("app_users")
+          .select("id, telegram_id, username, first_name")
+          .eq("telegram_id", asNum)
+          .maybeSingle();
+        refByUser = data;
+      }
+      if (!refByUser) {
+        const { data } = await sb
+          .from("app_users")
+          .select("id, telegram_id, username, first_name")
+          .eq("ref_code", spClean)
+          .maybeSingle();
+        refByUser = data;
+      }
     }
     // Anti-cheat: same IP suspends NEW account
     let suspended = false;
