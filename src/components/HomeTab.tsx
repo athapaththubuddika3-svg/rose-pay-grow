@@ -1,27 +1,24 @@
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { motion } from "framer-motion";
-import { Copy, Gift, Megaphone, ChevronRight, BookOpen } from "lucide-react";
+import { Gift, ChevronRight, BookOpen } from "lucide-react";
 import { toast } from "sonner";
 import { useTelegram } from "./TelegramProvider";
 import { RoseCoin } from "./RoseCoin";
-import { getMe, claimRewardCode, setNotifEnabled } from "@/lib/api.functions";
+import { getMe, claimRewardCode } from "@/lib/api.functions";
 
 export function HomeTab() {
   const tg = useTelegram();
   const fetchMe = useServerFn(getMe);
   const claim = useServerFn(claimRewardCode);
-  const setNotif = useServerFn(setNotifEnabled);
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [code, setCode] = useState("");
-  const [showNotif, setShowNotif] = useState(false);
 
   const reload = async () => {
     try {
       const r = await fetchMe({ data: { initData: tg.initData, startParam: tg.startParam || undefined } });
       setData(r);
-      if (!r.user.notif_enabled) setShowNotif(true);
     } catch (e: any) {
       toast.error(e.message || "Failed to load");
     } finally {
@@ -52,17 +49,6 @@ export function HomeTab() {
       reload();
     } catch (e: any) {
       tg.haptic("error");
-      toast.error(e.message);
-    }
-  };
-
-  const enableNotif = async () => {
-    try {
-      await setNotif({ data: { initData: tg.initData } });
-      tg.openTelegramLink("https://t.me/RosePayFibot?start=notif");
-      setShowNotif(false);
-      reload();
-    } catch (e: any) {
       toast.error(e.message);
     }
   };
