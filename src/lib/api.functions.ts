@@ -4,7 +4,6 @@ import {
   verifyInitData,
   parseInitDataUnsafe,
   getAdminClient,
-  genRefCode,
   tgApi,
   ADMIN_CHAT_ID,
   BOT_TOKEN,
