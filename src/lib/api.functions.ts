@@ -531,9 +531,32 @@ async function maybeActivateRefBonus(sb: any, userId: string) {
     .in("task_id", requiredIds);
   if ((done || []).length < requiredIds.length) return;
   // Mark referral claimable
-  await sb
+  const { data: activated } = await sb
     .from("referrals")
     .update({ status: "claimable" })
     .eq("referred_id", userId)
-    .eq("status", "pending");
+    .eq("status", "pending")
+    .select("referrer_id, bonus_amount");
+  // Notify each referrer that their bonus is now claimable
+  for (const r of activated || []) {
+    const { data: ref } = await sb
+      .from("app_users")
+      .select("telegram_id")
+      .eq("id", r.referrer_id)
+      .maybeSingle();
+    const { data: who } = await sb
+      .from("app_users")
+      .select("username, first_name")
+      .eq("id", userId)
+      .maybeSingle();
+    if (ref?.telegram_id) {
+      try {
+        await tgApi("sendMessage", {
+          chat_id: ref.telegram_id,
+          text: `✅ <b>Referral bonus ready!</b>\n@${who?.username || who?.first_name || "Your referral"} completed all tasks.\n\n🌹 Open the app and claim your <b>${r.bonus_amount} ROSE</b> bonus.`,
+          parse_mode: "HTML",
+        });
+      } catch {}
+    }
+  }
 }
