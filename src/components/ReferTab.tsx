@@ -102,8 +102,15 @@ export function ReferTab() {
           <button
             onClick={copy}
             className="p-2 rounded-lg gradient-pink text-white"
+            aria-label="Copy link"
           >
             <Copy className="w-4 h-4" />
+          </button>
+          <button
+            onClick={share}
+            className="px-3 py-2 rounded-lg gradient-purple text-white text-xs font-semibold"
+          >
+            Share
           </button>
         </div>
         <p className="text-[10px] text-muted-foreground mt-2">
