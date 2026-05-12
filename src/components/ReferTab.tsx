@@ -39,11 +39,36 @@ export function ReferTab() {
       </div>
     );
 
-  const link = `https://t.me/${data.botUsername}?start=${data.user.ref_code}`;
-  const copy = () => {
-    navigator.clipboard.writeText(link);
-    tg.haptic("success");
-    toast.success("Link copied!");
+  const link = `https://t.me/${data.botUsername}?start=${data.user.telegram_id}`;
+  const copy = async () => {
+    let ok = false;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(link);
+        ok = true;
+      }
+    } catch {}
+    if (!ok) {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = link;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        ok = document.execCommand("copy");
+        document.body.removeChild(ta);
+      } catch {}
+    }
+    tg.haptic(ok ? "success" : "error");
+    if (ok) toast.success("Link copied!");
+    else toast.error("Copy failed — long-press the link to copy");
+  };
+
+  const share = () => {
+    const text = `🌹 Join RosePayFi and earn ROSE tokens!\n${link}`;
+    tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`);
   };
 
   const handleClaim = async (refId: string) => {
@@ -77,8 +102,15 @@ export function ReferTab() {
           <button
             onClick={copy}
             className="p-2 rounded-lg gradient-pink text-white"
+            aria-label="Copy link"
           >
             <Copy className="w-4 h-4" />
+          </button>
+          <button
+            onClick={share}
+            className="px-3 py-2 rounded-lg gradient-purple text-white text-xs font-semibold"
+          >
+            Share
           </button>
         </div>
         <p className="text-[10px] text-muted-foreground mt-2">

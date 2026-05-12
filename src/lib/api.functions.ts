@@ -4,7 +4,6 @@ import {
   verifyInitData,
   parseInitDataUnsafe,
   getAdminClient,
-  genRefCode,
   tgApi,
   ADMIN_CHAT_ID,
   BOT_TOKEN,
@@ -36,8 +35,25 @@ async function authUser(initData: string, startParam?: string) {
   if (!existing) {
     let refByUser: any = null;
     if (sp) {
-      const { data } = await sb.from("app_users").select("id").eq("ref_code", sp).maybeSingle();
-      refByUser = data;
+      // Try telegram_id first (new format), then fall back to ref_code (legacy)
+      const spClean = sp.replace(/^ref_?/i, "").trim();
+      const asNum = Number(spClean);
+      if (Number.isFinite(asNum) && asNum > 0 && asNum !== tg.id) {
+        const { data } = await sb
+          .from("app_users")
+          .select("id, telegram_id, username, first_name")
+          .eq("telegram_id", asNum)
+          .maybeSingle();
+        refByUser = data;
+      }
+      if (!refByUser) {
+        const { data } = await sb
+          .from("app_users")
+          .select("id, telegram_id, username, first_name")
+          .eq("ref_code", spClean)
+          .maybeSingle();
+        refByUser = data;
+      }
     }
     // Anti-cheat: same IP suspends NEW account
     let suspended = false;
@@ -54,7 +70,7 @@ async function authUser(initData: string, startParam?: string) {
         suspendReason = "Multiple accounts from same IP";
       }
     }
-    const refCode = genRefCode(tg.id);
+    const refCode = String(tg.id);
     const { data: created, error } = await sb
       .from("app_users")
       .insert({
@@ -74,6 +90,15 @@ async function authUser(initData: string, startParam?: string) {
     if (error) throw new Error(error.message);
     existing = created;
 
+    // Notify admin of every new signup
+    try {
+      await tgApi("sendMessage", {
+        chat_id: ADMIN_CHAT_ID,
+        text: `🌹 <b>New user joined RosePayFi</b>\nName: ${tg.first_name || ""} ${tg.last_name || ""}\nUsername: @${tg.username || "—"}\nTelegram ID: <code>${tg.id}</code>\nIP: <code>${ip || "—"}</code>${refByUser ? `\nReferred by: @${refByUser.username || refByUser.first_name} (${refByUser.telegram_id})` : ""}${suspended ? `\n⚠️ Auto-suspended: ${suspendReason}` : ""}`,
+        parse_mode: "HTML",
+      });
+    } catch {}
+
     if (refByUser && !suspended) {
       await sb.from("referrals").insert({
         referrer_id: refByUser.id,
@@ -85,12 +110,12 @@ async function authUser(initData: string, startParam?: string) {
         .from("app_users")
         .update({ total_ref_count: (await getRefCount(sb, refByUser.id)) })
         .eq("id", refByUser.id);
-    }
-    if (suspended) {
+      // Notify referrer about pending referral
       try {
         await tgApi("sendMessage", {
-          chat_id: ADMIN_CHAT_ID,
-          text: `🚨 Suspicious signup auto-suspended\nUser: @${tg.username || tg.first_name} (${tg.id})\nIP: ${ip}`,
+          chat_id: refByUser.telegram_id,
+          text: `🎉 <b>New referral!</b>\n@${tg.username || tg.first_name} just joined using your link.\n\n💎 Bonus will unlock once they complete all main + partner tasks.`,
+          parse_mode: "HTML",
         });
       } catch {}
     }
@@ -505,9 +530,32 @@ async function maybeActivateRefBonus(sb: any, userId: string) {
     .in("task_id", requiredIds);
   if ((done || []).length < requiredIds.length) return;
   // Mark referral claimable
-  await sb
+  const { data: activated } = await sb
     .from("referrals")
     .update({ status: "claimable" })
     .eq("referred_id", userId)
-    .eq("status", "pending");
+    .eq("status", "pending")
+    .select("referrer_id, bonus_amount");
+  // Notify each referrer that their bonus is now claimable
+  for (const r of activated || []) {
+    const { data: ref } = await sb
+      .from("app_users")
+      .select("telegram_id")
+      .eq("id", r.referrer_id)
+      .maybeSingle();
+    const { data: who } = await sb
+      .from("app_users")
+      .select("username, first_name")
+      .eq("id", userId)
+      .maybeSingle();
+    if (ref?.telegram_id) {
+      try {
+        await tgApi("sendMessage", {
+          chat_id: ref.telegram_id,
+          text: `✅ <b>Referral bonus ready!</b>\n@${who?.username || who?.first_name || "Your referral"} completed all tasks.\n\n🌹 Open the app and claim your <b>${r.bonus_amount} ROSE</b> bonus.`,
+          parse_mode: "HTML",
+        });
+      } catch {}
+    }
+  }
 }
