@@ -12,6 +12,7 @@ import { TaskTab } from "@/components/TaskTab";
 import { ReferTab } from "@/components/ReferTab";
 import { ProfileTab } from "@/components/ProfileTab";
 import { ComingSoon } from "@/components/ComingSoon";
+import { NotifGate } from "@/components/NotifGate";
 
 export const Route = createFileRoute("/")({
   component: App,
