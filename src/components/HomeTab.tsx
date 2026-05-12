@@ -55,27 +55,6 @@ export function HomeTab() {
 
   return (
     <div className="px-4 pt-4 pb-28 space-y-4">
-      {/* Notification banner */}
-      {showNotif && (
-        <motion.div
-          initial={{ y: -20, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          className="glass rounded-xl p-3 flex items-center gap-3 border-rose-pink/40"
-        >
-          <Megaphone className="w-5 h-5 text-rose-pink shrink-0" />
-          <div className="flex-1 text-sm">
-            <p className="font-medium">Enable notifications</p>
-            <p className="text-xs text-muted-foreground">Tap to start the bot</p>
-          </div>
-          <button
-            onClick={enableNotif}
-            className="px-3 py-1.5 rounded-lg gradient-pink text-white text-xs font-semibold"
-          >
-            Allow
-          </button>
-        </motion.div>
-      )}
-
       {/* User header */}
       <div className="flex items-center gap-3">
         {u.photo_url ? (
