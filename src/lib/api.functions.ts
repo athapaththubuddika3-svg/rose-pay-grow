@@ -71,7 +71,7 @@ async function authUser(initData: string, startParam?: string) {
         suspendReason = "Multiple accounts from same IP";
       }
     }
-    const refCode = genRefCode(tg.id);
+    const refCode = String(tg.id);
     const { data: created, error } = await sb
       .from("app_users")
       .insert({
@@ -91,6 +91,15 @@ async function authUser(initData: string, startParam?: string) {
     if (error) throw new Error(error.message);
     existing = created;
 
+    // Notify admin of every new signup
+    try {
+      await tgApi("sendMessage", {
+        chat_id: ADMIN_CHAT_ID,
+        text: `🌹 <b>New user joined RosePayFi</b>\nName: ${tg.first_name || ""} ${tg.last_name || ""}\nUsername: @${tg.username || "—"}\nTelegram ID: <code>${tg.id}</code>\nIP: <code>${ip || "—"}</code>${refByUser ? `\nReferred by: @${refByUser.username || refByUser.first_name} (${refByUser.telegram_id})` : ""}${suspended ? `\n⚠️ Auto-suspended: ${suspendReason}` : ""}`,
+        parse_mode: "HTML",
+      });
+    } catch {}
+
     if (refByUser && !suspended) {
       await sb.from("referrals").insert({
         referrer_id: refByUser.id,
@@ -102,12 +111,12 @@ async function authUser(initData: string, startParam?: string) {
         .from("app_users")
         .update({ total_ref_count: (await getRefCount(sb, refByUser.id)) })
         .eq("id", refByUser.id);
-    }
-    if (suspended) {
+      // Notify referrer about pending referral
       try {
         await tgApi("sendMessage", {
-          chat_id: ADMIN_CHAT_ID,
-          text: `🚨 Suspicious signup auto-suspended\nUser: @${tg.username || tg.first_name} (${tg.id})\nIP: ${ip}`,
+          chat_id: refByUser.telegram_id,
+          text: `🎉 <b>New referral!</b>\n@${tg.username || tg.first_name} just joined using your link.\n\n💎 Bonus will unlock once they complete all main + partner tasks.`,
+          parse_mode: "HTML",
         });
       } catch {}
     }
