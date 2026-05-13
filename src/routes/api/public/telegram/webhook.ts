@@ -11,6 +11,19 @@ async function tg(method: string, body: any) {
   });
 }
 
+const WELCOME_TEXT = `🌹 <b>Welcome to RosePayFi!</b>
+
+Earn <b>ROSE (Oasis Network)</b> tokens by:
+• 👀 Watching ads (up to 40/day)
+• ✅ Completing simple tasks
+• 🎁 Daily login bonuses
+• 💎 Inviting friends — 1 ROSE each + <b>10% lifetime commission</b>
+• 🎟️ Claiming reward codes from our channel
+
+💸 <b>Real withdrawals</b> straight to your Oasis wallet.
+
+Tap below to launch the mini app 👇`;
+
 export const Route = createFileRoute("/api/public/telegram/webhook")({
   server: {
     handlers: {
@@ -25,8 +38,6 @@ export const Route = createFileRoute("/api/public/telegram/webhook")({
         const from = msg.from || {};
 
         if (text.startsWith("/start")) {
-          const refParam = text.replace("/start", "").trim();
-          // Mark notif_enabled & link ref if first time
           try {
             const sb = createClient(
               process.env.SUPABASE_URL!,
@@ -43,22 +54,30 @@ export const Route = createFileRoute("/api/public/telegram/webhook")({
             }
           } catch {}
 
-          await tg("sendMessage", {
+          const keyboard = {
+            inline_keyboard: [
+              [{ text: "🚀 Open RosePayFi", url: "https://t.me/RosePayFibot?startapp=open" }],
+              [{ text: "📢 Community", url: "https://t.me/rosepayfi" }, { text: "💸 Payments", url: "https://t.me/rosepayfipayment" }],
+            ],
+          };
+
+          // Try to send a photo first; fall back to text-only
+          const photoSent = await tg("sendPhoto", {
             chat_id: chatId,
-            text: `🌹 <b>Welcome to RosePayFi!</b>\n\nEarn ROSE tokens by completing tasks, watching ads, and inviting friends.\n\nTap below to launch the mini app 👇`,
+            photo: "https://rose-pay-grow.lovable.app/og.jpg",
+            caption: WELCOME_TEXT,
             parse_mode: "HTML",
-            reply_markup: {
-              inline_keyboard: [
-                [
-                  {
-                    text: "🚀 Open RosePayFi",
-                    web_app: { url: "https://rose-pay-grow.lovable.app" },
-                  },
-                ],
-                [{ text: "📢 Community", url: "https://t.me/rosepayfi" }],
-              ],
-            },
-          });
+            reply_markup: keyboard,
+          }).then((r) => r.ok).catch(() => false);
+
+          if (!photoSent) {
+            await tg("sendMessage", {
+              chat_id: chatId,
+              text: WELCOME_TEXT,
+              parse_mode: "HTML",
+              reply_markup: keyboard,
+            });
+          }
           return new Response("ok");
         }
 
@@ -66,6 +85,7 @@ export const Route = createFileRoute("/api/public/telegram/webhook")({
           await tg("sendMessage", {
             chat_id: chatId,
             text: "Use /start to open the app. For support contact @RosePayFiSupport",
+            reply_markup: { inline_keyboard: [[{ text: "🚀 Open RosePayFi", url: "https://t.me/RosePayFibot?startapp=open" }]] },
           });
         }
         return new Response("ok");

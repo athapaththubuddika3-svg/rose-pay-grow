@@ -14,6 +14,57 @@ export type Database = {
   }
   public: {
     Tables: {
+      ad_task_completions: {
+        Row: {
+          completed_at: string
+          id: string
+          reward: number
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string
+          id?: string
+          reward: number
+          user_id: string
+        }
+        Update: {
+          completed_at?: string
+          id?: string
+          reward?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
+      ad_watches: {
+        Row: {
+          block_id: string
+          duration_sec: number
+          id: string
+          kind: string
+          reward: number
+          user_id: string
+          watched_at: string
+        }
+        Insert: {
+          block_id: string
+          duration_sec?: number
+          id?: string
+          kind: string
+          reward?: number
+          user_id: string
+          watched_at?: string
+        }
+        Update: {
+          block_id?: string
+          duration_sec?: number
+          id?: string
+          kind?: string
+          reward?: number
+          user_id?: string
+          watched_at?: string
+        }
+        Relationships: []
+      }
       admin_sessions: {
         Row: {
           admin_id: string
@@ -86,14 +137,23 @@ export type Database = {
         Row: {
           balance: number
           created_at: string
+          daily_ad_tasks_count: number
+          daily_ad_tasks_reset_at: string
+          daily_ads_count: number
+          daily_ads_reset_at: string
+          expected_balance: number
           first_name: string | null
           id: string
           ip_address: string | null
+          last_ad_task_claim_at: string | null
+          last_daily_bonus_at: string | null
           last_name: string | null
           notif_enabled: boolean
           photo_url: string | null
           ref_by: string | null
           ref_code: string
+          session_ads_count: number
+          session_ads_started_at: string | null
           suspend_reason: string | null
           suspended: boolean
           telegram_id: number
@@ -106,18 +166,28 @@ export type Database = {
           updated_at: string
           username: string | null
           wallet_address: string | null
+          withdraw_ads_done: number
         }
         Insert: {
           balance?: number
           created_at?: string
+          daily_ad_tasks_count?: number
+          daily_ad_tasks_reset_at?: string
+          daily_ads_count?: number
+          daily_ads_reset_at?: string
+          expected_balance?: number
           first_name?: string | null
           id?: string
           ip_address?: string | null
+          last_ad_task_claim_at?: string | null
+          last_daily_bonus_at?: string | null
           last_name?: string | null
           notif_enabled?: boolean
           photo_url?: string | null
           ref_by?: string | null
           ref_code: string
+          session_ads_count?: number
+          session_ads_started_at?: string | null
           suspend_reason?: string | null
           suspended?: boolean
           telegram_id: number
@@ -130,18 +200,28 @@ export type Database = {
           updated_at?: string
           username?: string | null
           wallet_address?: string | null
+          withdraw_ads_done?: number
         }
         Update: {
           balance?: number
           created_at?: string
+          daily_ad_tasks_count?: number
+          daily_ad_tasks_reset_at?: string
+          daily_ads_count?: number
+          daily_ads_reset_at?: string
+          expected_balance?: number
           first_name?: string | null
           id?: string
           ip_address?: string | null
+          last_ad_task_claim_at?: string | null
+          last_daily_bonus_at?: string | null
           last_name?: string | null
           notif_enabled?: boolean
           photo_url?: string | null
           ref_by?: string | null
           ref_code?: string
+          session_ads_count?: number
+          session_ads_started_at?: string | null
           suspend_reason?: string | null
           suspended?: boolean
           telegram_id?: number
@@ -154,6 +234,7 @@ export type Database = {
           updated_at?: string
           username?: string | null
           wallet_address?: string | null
+          withdraw_ads_done?: number
         }
         Relationships: [
           {
@@ -196,6 +277,81 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      balance_audits: {
+        Row: {
+          actual: number
+          detected_at: string
+          diff: number
+          expected: number
+          id: string
+          user_id: string
+        }
+        Insert: {
+          actual: number
+          detected_at?: string
+          diff: number
+          expected: number
+          id?: string
+          user_id: string
+        }
+        Update: {
+          actual?: number
+          detected_at?: string
+          diff?: number
+          expected?: number
+          id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      broadcasts: {
+        Row: {
+          created_at: string
+          failed_count: number
+          id: string
+          message: string
+          sent_count: number
+          to_channel: boolean
+        }
+        Insert: {
+          created_at?: string
+          failed_count?: number
+          id?: string
+          message: string
+          sent_count?: number
+          to_channel?: boolean
+        }
+        Update: {
+          created_at?: string
+          failed_count?: number
+          id?: string
+          message?: string
+          sent_count?: number
+          to_channel?: boolean
+        }
+        Relationships: []
+      }
+      daily_bonus_claims: {
+        Row: {
+          amount: number
+          claimed_at: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          claimed_at?: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          claimed_at?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       referrals: {
         Row: {

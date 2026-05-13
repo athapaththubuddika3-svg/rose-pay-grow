@@ -1,8 +1,10 @@
-import { createHmac, createHash } from "crypto";
+import { createHmac } from "crypto";
 import { createClient } from "@supabase/supabase-js";
 
 export const ADMIN_CHAT_ID = "1889290764";
 export const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
+export const APP_URL = "https://rose-pay-grow.lovable.app";
+export const BOT_USERNAME = "RosePayFibot";
 
 export function getAdminClient() {
   return createClient(
@@ -21,7 +23,6 @@ export interface TgUser {
   language_code?: string;
 }
 
-/** Verify Telegram WebApp initData and return user. Returns null if invalid. */
 export function verifyInitData(initData: string): { user: TgUser; startParam?: string } | null {
   if (!initData || !BOT_TOKEN) return null;
   try {
@@ -44,7 +45,6 @@ export function verifyInitData(initData: string): { user: TgUser; startParam?: s
   }
 }
 
-/** Dev fallback: parse initData WITHOUT verifying (only when bot token missing or in preview). */
 export function parseInitDataUnsafe(initData: string): { user: TgUser; startParam?: string } | null {
   try {
     const params = new URLSearchParams(initData);
@@ -66,7 +66,20 @@ export async function tgApi(method: string, body: Record<string, any>) {
   return r.json();
 }
 
-export function genRefCode(telegramId: number): string {
-  const h = createHash("sha256").update(String(telegramId) + "rosepayfi").digest("hex");
-  return h.substring(0, 8).toUpperCase();
+/** Standard "Open RosePayFi" inline keyboard */
+export function appKeyboard() {
+  return {
+    inline_keyboard: [
+      [{ text: "🚀 Open RosePayFi", url: `https://t.me/${BOT_USERNAME}?startapp=open` }],
+    ],
+  };
+}
+
+export function earnKeyboard() {
+  return {
+    inline_keyboard: [
+      [{ text: "🌹 Earn ROSE", url: `https://t.me/${BOT_USERNAME}?startapp=open` }],
+      [{ text: "📢 Community", url: "https://t.me/rosepayfi" }],
+    ],
+  };
 }

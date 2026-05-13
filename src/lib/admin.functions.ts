@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
-import { getAdminClient, tgApi } from "./telegram.server";
+import { getAdminClient, tgApi, appKeyboard } from "./telegram.server";
 
 async function requireAdmin(token: string) {
   if (!token) throw new Error("Unauthorized");
@@ -22,7 +22,6 @@ function genToken() {
     .join("");
 }
 
-// === Admin login ===
 export const adminLogin = createServerFn({ method: "POST" })
   .inputValidator((d: { email: string; password: string }) =>
     z.object({ email: z.string().email(), password: z.string().min(4) }).parse(d)
@@ -34,27 +33,7 @@ export const adminLogin = createServerFn({ method: "POST" })
       .select("*")
       .eq("email", data.email.toLowerCase())
       .maybeSingle();
-
-    // Bootstrap first admin from env if no admins exist yet
-    if (!admin) {
-      const { count } = await sb.from("admins").select("*", { count: "exact", head: true });
-      const bootstrapEmail = (process.env.ADMIN_EMAIL || "admin@rosepayfi.com").toLowerCase();
-      const bootstrapPass = process.env.ADMIN_PASSWORD || "RosePayFi2026!";
-      if ((count || 0) === 0 && data.email.toLowerCase() === bootstrapEmail && data.password === bootstrapPass) {
-        const hash = await bcrypt.hash(bootstrapPass, 10);
-        const { data: created } = await sb
-          .from("admins")
-          .insert({ email: bootstrapEmail, password_hash: hash })
-          .select("*")
-          .single();
-        const token = genToken();
-        const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-        await sb.from("admin_sessions").insert({ admin_id: created!.id, token, expires_at: expires });
-        return { token, email: bootstrapEmail };
-      }
-      throw new Error("Invalid credentials");
-    }
-
+    if (!admin) throw new Error("Invalid credentials");
     const ok = await bcrypt.compare(data.password, admin.password_hash);
     if (!ok) throw new Error("Invalid credentials");
     const token = genToken();
@@ -75,11 +54,13 @@ export const adminStats = createServerFn({ method: "POST" })
   .inputValidator((d: { token: string }) => z.object({ token: z.string() }).parse(d))
   .handler(async ({ data }) => {
     const { sb } = await requireAdmin(data.token);
-    const [users, tasks, withdrawals, codes] = await Promise.all([
+    const [users, tasks, withdrawals, codes, suspended, audits] = await Promise.all([
       sb.from("app_users").select("*", { count: "exact", head: true }),
       sb.from("task_completions").select("*", { count: "exact", head: true }).eq("status", "pending"),
       sb.from("withdrawals").select("*", { count: "exact", head: true }).eq("status", "pending"),
       sb.from("reward_codes").select("*", { count: "exact", head: true }).eq("active", true),
+      sb.from("app_users").select("*", { count: "exact", head: true }).eq("suspended", true),
+      sb.from("balance_audits").select("*", { count: "exact", head: true }),
     ]);
     const { data: totals } = await sb.from("app_users").select("balance, total_earned, total_withdraw");
     const sumBal = (totals || []).reduce((a, r: any) => a + Number(r.balance), 0);
@@ -90,6 +71,8 @@ export const adminStats = createServerFn({ method: "POST" })
       pendingTasks: tasks.count || 0,
       pendingWithdrawals: withdrawals.count || 0,
       activeCodes: codes.count || 0,
+      suspendedUsers: suspended.count || 0,
+      fraudAudits: audits.count || 0,
       sumBalance: sumBal,
       sumEarned: sumEarn,
       sumWithdraw: sumWd,
@@ -134,7 +117,7 @@ export const adminUpdateUser = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-// === Tasks CRUD ===
+// === Tasks ===
 export const adminListTasks = createServerFn({ method: "POST" })
   .inputValidator((d: { token: string }) => z.object({ token: z.string() }).parse(d))
   .handler(async ({ data }) => {
@@ -163,11 +146,8 @@ export const adminUpsertTask = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { sb } = await requireAdmin(data.token);
     const { token, id, ...payload } = data as any;
-    if (id) {
-      await sb.from("tasks").update(payload).eq("id", id);
-    } else {
-      await sb.from("tasks").insert(payload);
-    }
+    if (id) await sb.from("tasks").update(payload).eq("id", id);
+    else await sb.from("tasks").insert(payload);
     return { ok: true };
   });
 
@@ -181,7 +161,7 @@ export const adminDeleteTask = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-// === Task submissions ===
+// === Submissions ===
 export const adminListSubmissions = createServerFn({ method: "POST" })
   .inputValidator((d: { token: string }) => z.object({ token: z.string() }).parse(d))
   .handler(async ({ data }) => {
@@ -226,7 +206,9 @@ export const adminReviewSubmission = createServerFn({ method: "POST" })
       try {
         await tgApi("sendMessage", {
           chat_id: u.telegram_id,
-          text: `✅ Task approved!\n"${(comp as any).task.title}"\n+${amt} ROSE added to your balance 🌹`,
+          text: `✅ <b>Task approved!</b>\n"${(comp as any).task.title}"\n+${amt} ROSE added 🌹`,
+          parse_mode: "HTML",
+          reply_markup: appKeyboard(),
         });
       } catch {}
     } else {
@@ -239,6 +221,7 @@ export const adminReviewSubmission = createServerFn({ method: "POST" })
         await tgApi("sendMessage", {
           chat_id: (comp as any).user.telegram_id,
           text: `❌ Task rejected: "${(comp as any).task.title}"\nReason: ${data.reason || "Not valid"}`,
+          reply_markup: appKeyboard(),
         });
       } catch {}
     }
@@ -279,6 +262,8 @@ export const adminReviewWithdraw = createServerFn({ method: "POST" })
       .single();
     if (!wd) throw new Error("Not found");
     const u = (wd as any).user;
+    const { data: settings } = await sb.from("app_settings").select("*").eq("key", "payment_channel").maybeSingle();
+    const paymentChannel = (settings?.value as string) || "@rosepayfipayment";
     if (data.approve) {
       if (!data.txId) throw new Error("TX ID required");
       await sb.from("withdrawals").update({
@@ -289,16 +274,15 @@ export const adminReviewWithdraw = createServerFn({ method: "POST" })
       await sb.from("app_users").update({
         total_withdraw: Number(u.total_withdraw) + Number(wd.amount),
       }).eq("id", u.id);
-      // Post to payment channel
       try {
         await tgApi("sendMessage", {
-          chat_id: "@rosepayfipayment",
+          chat_id: paymentChannel,
           text: `💸 <b>Withdrawal Paid</b>\nUser: @${u.username || u.first_name}\nAmount: <b>${wd.amount} ROSE</b>\nWallet: <code>${wd.wallet_address}</code>`,
           parse_mode: "HTML",
           reply_markup: {
             inline_keyboard: [
               [{ text: "🔍 View Transaction", url: `https://www.oasisscan.com/transactions/${data.txId}` }],
-              [{ text: "🚀 Open Mini App", url: "https://t.me/RosePayFibot" }],
+              [{ text: "🚀 Open RosePayFi", url: "https://t.me/RosePayFibot?startapp=open" }],
             ],
           },
         });
@@ -306,8 +290,9 @@ export const adminReviewWithdraw = createServerFn({ method: "POST" })
       try {
         await tgApi("sendMessage", {
           chat_id: u.telegram_id,
-          text: `✅ Withdrawal Approved!\nAmount: ${wd.amount} ROSE\nTX: <code>${data.txId}</code>`,
+          text: `✅ <b>Withdrawal Approved!</b>\nAmount: ${wd.amount} ROSE\nTX: <code>${data.txId}</code>`,
           parse_mode: "HTML",
+          reply_markup: appKeyboard(),
         });
       } catch {}
     } else {
@@ -316,7 +301,6 @@ export const adminReviewWithdraw = createServerFn({ method: "POST" })
         reject_reason: data.reason || "Rejected",
         reviewed_at: new Date().toISOString(),
       }).eq("id", data.id);
-      // Refund balance
       await sb.from("app_users").update({
         balance: Number(u.balance) + Number(wd.amount),
       }).eq("id", u.id);
@@ -324,13 +308,14 @@ export const adminReviewWithdraw = createServerFn({ method: "POST" })
         await tgApi("sendMessage", {
           chat_id: u.telegram_id,
           text: `❌ Withdrawal Rejected\nReason: ${data.reason || "Rejected"}\nYour ${wd.amount} ROSE has been refunded.`,
+          reply_markup: appKeyboard(),
         });
       } catch {}
     }
     return { ok: true };
   });
 
-// === Reward codes ===
+// === Codes ===
 export const adminListCodes = createServerFn({ method: "POST" })
   .inputValidator((d: { token: string }) => z.object({ token: z.string() }).parse(d))
   .handler(async ({ data }) => {
@@ -391,4 +376,69 @@ export const adminSetSetting = createServerFn({ method: "POST" })
       { onConflict: "key" }
     );
     return { ok: true };
+  });
+
+// === Broadcast ===
+export const adminBroadcast = createServerFn({ method: "POST" })
+  .inputValidator((d: { token: string; message: string; toChannel: boolean; toUsers: boolean }) =>
+    z.object({
+      token: z.string(),
+      message: z.string().min(1).max(4000),
+      toChannel: z.boolean(),
+      toUsers: z.boolean(),
+    }).parse(d)
+  )
+  .handler(async ({ data }) => {
+    const { sb } = await requireAdmin(data.token);
+    let sent = 0;
+    let failed = 0;
+    const { data: settings } = await sb.from("app_settings").select("key, value").in("key", ["community_channel"]);
+    const map: Record<string, any> = {};
+    (settings || []).forEach((r: any) => (map[r.key] = r.value));
+    const community = String(map.community_channel || "@rosepayfi");
+
+    if (data.toChannel) {
+      try {
+        await tgApi("sendMessage", {
+          chat_id: community,
+          text: data.message,
+          parse_mode: "HTML",
+          reply_markup: appKeyboard(),
+        });
+        sent++;
+      } catch {
+        failed++;
+      }
+    }
+
+    if (data.toUsers) {
+      const { data: users } = await sb
+        .from("app_users")
+        .select("telegram_id")
+        .eq("suspended", false)
+        .eq("notif_enabled", true);
+      for (const u of users || []) {
+        try {
+          await tgApi("sendMessage", {
+            chat_id: u.telegram_id,
+            text: data.message,
+            parse_mode: "HTML",
+            reply_markup: appKeyboard(),
+          });
+          sent++;
+        } catch {
+          failed++;
+        }
+        // Small delay to avoid rate limit (~30/sec)
+        await new Promise((r) => setTimeout(r, 50));
+      }
+    }
+
+    await sb.from("broadcasts").insert({
+      message: data.message,
+      to_channel: data.toChannel,
+      sent_count: sent,
+      failed_count: failed,
+    });
+    return { ok: true, sent, failed };
   });
