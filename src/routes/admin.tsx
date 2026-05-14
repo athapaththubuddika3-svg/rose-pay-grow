@@ -408,14 +408,31 @@ function SettingsView({ token }: { token: string }) {
   const [s, setS] = useState<Record<string, any>>({});
   const reload = () => get({ data: { token } }).then(r => setS(r.settings));
   useEffect(() => { reload(); }, [token]);
-  const fields = [
-    ["min_withdraw", "Minimum Withdraw (ROSE)", 10],
+  const fields: [string, string, any][] = [
+    ["min_withdraw", "Minimum Withdraw (ROSE)", 1],
+    ["max_withdraw", "Maximum Withdraw (ROSE)", 10],
+    ["withdraw_fee", "Withdraw Fee (ROSE)", 0.5],
     ["min_refs_for_withdraw", "Min Referrals for Withdraw", 2],
     ["min_daily_ads_for_withdraw", "Min Daily Ads for Withdraw", 10],
+    ["withdraw_ads_required", "Gate Ads before each Withdraw", 2],
     ["ref_bonus", "Referral Bonus (ROSE)", 1],
     ["ref_commission_pct", "Referral Commission %", 10],
+    ["daily_bonus_amount", "Daily Bonus (ROSE)", 0.05],
+    ["ad_reward", "Ad Reward (ROSE)", 0.05],
+    ["ad_daily_limit", "Daily Ad Limit", 40],
+    ["ad_session_limit", "Session Ad Limit", 20],
+    ["ad_session_hours", "Session Hours", 12],
+    ["ad_min_watch_rew", "Min Watch Time Rewarded (sec)", 33],
+    ["ad_task_reward", "Ad Task Reward (ROSE)", 0.02],
+    ["ad_task_daily_limit", "Daily Ad Task Limit", 15],
+    ["ad_task_cooldown_sec", "Ad Task Cooldown (sec)", 10],
+    ["ad_block_rew", "Adsgram Rewarded Block ID", "int-30047"],
+    ["ad_block_int", "Adsgram Auto Interstitial Block ID", "int-30048"],
+    ["ad_task_block", "Adsgram Task Block ID", "task-30049"],
     ["rose_price_override", "ROSE Price Override (USD, 0 = auto)", 0],
     ["bot_username", "Bot Username", "RosePayFibot"],
+    ["community_channel", "Community Channel", "@rosepayfi"],
+    ["payment_channel", "Payment Channel", "@rosepayfipayment"],
   ];
   return (
     <div>
