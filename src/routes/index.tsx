@@ -2,16 +2,16 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Toaster } from "sonner";
-import { Eye } from "lucide-react";
 import { TelegramProvider } from "@/components/TelegramProvider";
+import { AdsgramProvider } from "@/components/AdsgramProvider";
 import { Background } from "@/components/Background";
 import { Splash } from "@/components/Splash";
 import { BottomNav, type Tab } from "@/components/BottomNav";
 import { HomeTab } from "@/components/HomeTab";
 import { TaskTab } from "@/components/TaskTab";
+import { WatchTab } from "@/components/WatchTab";
 import { ReferTab } from "@/components/ReferTab";
 import { ProfileTab } from "@/components/ProfileTab";
-import { ComingSoon } from "@/components/ComingSoon";
 import { NotifGate } from "@/components/NotifGate";
 
 export const Route = createFileRoute("/")({
@@ -45,24 +45,26 @@ function App() {
       <AnimatePresence>{splash && <Splash />}</AnimatePresence>
       {!splash && (
         <NotifGate>
-          <main className="min-h-screen max-w-md mx-auto relative">
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={tab}
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                transition={{ duration: 0.2 }}
-              >
-                {tab === "home" && <HomeTab />}
-                {tab === "task" && <TaskTab />}
-                {tab === "watch" && <ComingSoon icon={Eye} title="Watch & Earn" />}
-                {tab === "refer" && <ReferTab />}
-                {tab === "profile" && <ProfileTab />}
-              </motion.div>
-            </AnimatePresence>
-            <BottomNav tab={tab} setTab={setTab} />
-          </main>
+          <AdsgramProvider>
+            <main className="min-h-screen max-w-md mx-auto relative">
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={tab}
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  {tab === "home" && <HomeTab />}
+                  {tab === "task" && <TaskTab />}
+                  {tab === "watch" && <WatchTab />}
+                  {tab === "refer" && <ReferTab />}
+                  {tab === "profile" && <ProfileTab />}
+                </motion.div>
+              </AnimatePresence>
+              <BottomNav tab={tab} setTab={setTab} />
+            </main>
+          </AdsgramProvider>
         </NotifGate>
       )}
     </TelegramProvider>
