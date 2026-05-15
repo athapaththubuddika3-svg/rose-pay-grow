@@ -39,7 +39,7 @@ export function ReferTab() {
       </div>
     );
 
-  const link = `https://t.me/${data.botUsername}?start=${data.user.telegram_id}`;
+  const link = `https://t.me/${data.botUsername}?startapp=ref_${data.user.telegram_id}`;
   const copy = async () => {
     let ok = false;
     try {
@@ -67,7 +67,8 @@ export function ReferTab() {
   };
 
   const share = () => {
-    const text = `🌹 Join RosePayFi and earn ROSE tokens!\n${link}`;
+    const image = data.shareImage || "https://rose-pay-grow.lovable.app/rosepayfi-share.jpg";
+    const text = `${data.shareText || "🌹 Join RosePayFi and earn ROSE tokens!"}\n\n✨ Watch ads, complete tasks, claim bonuses, and invite friends to earn more ROSE.\n\n🖼️ ${image}\n\n🚀 Open now: ${link}`;
     tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`);
   };
 

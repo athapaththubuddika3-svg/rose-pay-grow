@@ -641,8 +641,8 @@ export const getReferralData = createServerFn({ method: "POST" })
       botUsername: settings.bot_username || "RosePayFibot",
       refBonus: settings.ref_bonus || 1,
       refCommissionPct: settings.ref_commission_pct || 10,
-      shareImage: settings.app_share_image || "",
-      shareText: settings.app_share_text || "🌹 Join RosePayFi!",
+      shareImage: settings.app_share_image || "https://rose-pay-grow.lovable.app/rosepayfi-share.jpg",
+      shareText: settings.app_share_text || "🌹 Join RosePayFi and earn ROSE inside Telegram!",
     };
   });
 
@@ -870,14 +870,14 @@ export const getEarnStats = createServerFn({ method: "POST" })
         sessionLimit,
         sessionRemainMs,
         reward: Number(settings.ad_reward || 0.05),
-        blockId: String(settings.ad_block_rew || "int-30047"),
+        blockId: String(settings.ad_block_rew || "30047"),
       },
       adTask: {
         count: taskCount,
         limit: Number(settings.ad_task_daily_limit || 15),
         cooldownRemainMs,
         reward: Number(settings.ad_task_reward || 0.02),
-        blockId: String(settings.ad_task_block || "task-30049"),
+        blockId: String(settings.ad_task_block || "30049"),
       },
       bonus: {
         ready: bonusReady,

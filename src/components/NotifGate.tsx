@@ -10,12 +10,16 @@ export function NotifGate({ children }: { children: ReactNode }) {
   const fetchMe = useServerFn(getMe);
   const setNotif = useServerFn(setNotifEnabled);
   const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [suspended, setSuspended] = useState(false);
+  const [suspendReason, setSuspendReason] = useState("");
   const [waiting, setWaiting] = useState(false);
 
   const check = async () => {
     try {
       const r = await fetchMe({ data: { initData: tg.initData, startParam: tg.startParam || undefined } });
       setEnabled(!!r.user.notif_enabled);
+      setSuspended(!!r.user.suspended);
+      setSuspendReason(r.user.suspend_reason || "Your account has been suspended.");
     } catch {
       setEnabled(false);
     }
@@ -55,7 +59,23 @@ export function NotifGate({ children }: { children: ReactNode }) {
     <>
       {children}
       <AnimatePresence>
-        {!enabled && (
+        {suspended ? (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[70] bg-background/90 backdrop-blur-md flex items-center justify-center p-6"
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 12, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              className="glass rounded-3xl p-6 max-w-sm w-full text-center border-red-500/40"
+            >
+              <h2 className="text-xl font-bold text-red-300">Account Suspended</h2>
+              <p className="text-sm text-muted-foreground mt-3">{suspendReason}</p>
+            </motion.div>
+          </motion.div>
+        ) : !enabled && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
