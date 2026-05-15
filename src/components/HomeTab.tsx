@@ -157,10 +157,10 @@ export function HomeTab() {
           <p className="text-sm font-semibold">Mini App Guide</p>
         </div>
         <div className="space-y-2 text-xs text-muted-foreground">
-          <p>• Complete <span className="text-rose-pink">Tasks</span> to earn ROSE</p>
+          <p>• Complete <span className="text-rose-pink">Tasks</span> and <span className="text-rose-cyan">Ad Tasks</span> to earn ROSE</p>
+          <p>• <span className="text-rose-pink">Watch Ads</span> + claim your daily bonus to grow faster</p>
           <p>• <span className="text-rose-pink">Refer</span> friends for 1 ROSE + 10% lifetime commission</p>
-          <p>• Watch ads to unlock daily rewards (coming soon)</p>
-          <p>• Withdraw to your Oasis wallet (min 2 refs + 10 ads)</p>
+          <p>• Withdraw after completing all Main + Partner tasks and ad requirements</p>
           <p>• Join community: <button onClick={() => tg.openTelegramLink("https://t.me/rosepayfi")} className="text-rose-cyan underline">@rosepayfi</button></p>
         </div>
       </div>
