@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { motion, AnimatePresence } from "framer-motion";
 import { Copy, Trophy, Users, Loader2 } from "lucide-react";
@@ -16,6 +16,7 @@ export function ReferTab() {
   const [loading, setLoading] = useState(true);
   const [showLb, setShowLb] = useState(false);
   const [lb, setLb] = useState<any[]>([]);
+  const linkRef = useRef<HTMLInputElement | null>(null);
 
   const reload = async () => {
     try {
@@ -43,6 +44,10 @@ export function ReferTab() {
   const copy = async () => {
     let ok = false;
     try {
+      if (tg.isInTelegram && tg.openLink) {
+        linkRef.current?.focus();
+        linkRef.current?.select();
+      }
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(link);
         ok = true;
@@ -68,7 +73,7 @@ export function ReferTab() {
 
   const share = () => {
     const image = data.shareImage || "https://rose-pay-grow.lovable.app/rosepayfi-share.jpg";
-    const text = `${data.shareText || "🌹 Join RosePayFi and earn ROSE tokens!"}\n\n✨ Watch ads, complete tasks, claim bonuses, and invite friends to earn more ROSE.\n\n🖼️ ${image}\n\n🚀 Open now: ${link}`;
+    const text = `${data.shareText || "🌹 Join RosePayFi and earn ROSE tokens!"}\n\n✨ Watch ads, complete tasks, claim bonuses, and invite friends to earn more ROSE.\n📸 Preview: ${image}\n\n🚀 Open now:`;
     tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`);
   };
 
@@ -99,7 +104,13 @@ export function ReferTab() {
         <div className="absolute -right-6 -top-6 w-32 h-32 bg-rose-pink/30 rounded-full blur-3xl" />
         <p className="text-xs text-muted-foreground">Your Referral Link</p>
         <div className="flex items-center gap-2 mt-2">
-          <p className="flex-1 text-xs font-mono truncate bg-input/50 rounded-lg px-2 py-2">{link}</p>
+          <input
+            ref={linkRef}
+            readOnly
+            value={link}
+            onFocus={(e) => e.currentTarget.select()}
+            className="flex-1 text-xs font-mono bg-input/50 rounded-lg px-2 py-2 outline-none"
+          />
           <button
             onClick={copy}
             className="p-2 rounded-lg gradient-pink text-white"
@@ -116,6 +127,9 @@ export function ReferTab() {
         </div>
         <p className="text-[10px] text-muted-foreground mt-2">
           🎁 Earn {data.refBonus} ROSE per referral after they complete all main + partner tasks. Plus {data.refCommissionPct}% lifetime commission!
+        </p>
+        <p className="text-[10px] text-amber-300 mt-2">
+          ⚠️ {data.antiCheatNote}
         </p>
       </div>
 
