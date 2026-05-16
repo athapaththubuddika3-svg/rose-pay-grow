@@ -44,7 +44,7 @@ export function ReferTab() {
   const copy = async () => {
     let ok = false;
     try {
-      if (tg.isInTelegram && tg.openLink) {
+      if (tg.isInTelegram) {
         linkRef.current?.focus();
         linkRef.current?.select();
       }
