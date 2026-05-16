@@ -58,6 +58,10 @@ export function ProfileTab() {
   const minRefs = Number(settings.min_refs_for_withdraw || 2);
   const minAds = Number(settings.min_daily_ads_for_withdraw || 10);
   const minWd = Number(settings.min_withdraw || 10);
+  const fee = Number(settings.withdraw_fee || 0.5);
+  const maxWd = Number(settings.max_withdraw || 10);
+  const amountNum = Number(amount || 0);
+  const netAmount = Math.max(0, amountNum - fee);
 
   const tryWithdraw = () => {
     if (u.total_ref_count < minRefs) return toast.error(`Need at least ${minRefs} referrals`);
@@ -75,7 +79,13 @@ export function ProfileTab() {
     try {
       await submit({ data: { initData: tg.initData, amount: a, address } });
       tg.haptic("success");
-      toast.success("Withdrawal requested!");
+      toast.success("Withdrawal request success", {
+        description: `Net payout ${Math.max(0, a - fee).toFixed(2)} ROSE will arrive within 24 hours.`,
+        action: {
+          label: "Open RosePayFi",
+          onClick: () => tg.openTelegramLink("https://t.me/RosePayFibot?startapp=open"),
+        },
+      });
       setShowWd(false);
       reload();
     } catch (e: any) {
@@ -103,7 +113,10 @@ export function ProfileTab() {
           </div>
         )}
         <p className="font-bold mt-3">@{u.username || u.first_name}</p>
-        <button onClick={copyId} className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+        <button
+          onClick={copyId}
+          className="text-xs text-muted-foreground flex items-center gap-1 mt-1"
+        >
           ID: {u.telegram_id} <Copy className="w-3 h-3" />
         </button>
       </div>
@@ -118,7 +131,8 @@ export function ProfileTab() {
           <span className="text-sm text-muted-foreground">ROSE</span>
         </div>
         <p className="text-xs text-rose-gold mt-1">
-          ≈ ${(Number(u.balance) * (data.price || 0)).toFixed(4)} • Live: ${(data.price || 0).toFixed(4)}
+          ≈ ${(Number(u.balance) * (data.price || 0)).toFixed(4)} • Live: $
+          {(data.price || 0).toFixed(4)}
         </p>
         <button
           onClick={tryWithdraw}
@@ -136,9 +150,18 @@ export function ProfileTab() {
 
       <div className="text-xs text-muted-foreground glass rounded-xl p-3 space-y-1">
         <p>Requirements:</p>
-        <p>• Min withdraw: {minWd} ROSE {Number(u.balance) >= minWd ? "✅" : "❌"}</p>
-        <p>• Min refs: {minRefs} ({u.total_ref_count}) {u.total_ref_count >= minRefs ? "✅" : "❌"}</p>
-        <p>• Daily ads: {minAds} ({u.total_ads}) {u.total_ads >= minAds ? "✅" : "❌"}</p>
+        <p>
+          • Min withdraw: {minWd} ROSE {Number(u.balance) >= minWd ? "✅" : "❌"}
+        </p>
+        <p>• Max withdraw: {maxWd} ROSE</p>
+        <p>• Fee: {fee} ROSE</p>
+        <p>
+          • Min refs: {minRefs} ({u.total_ref_count}) {u.total_ref_count >= minRefs ? "✅" : "❌"}
+        </p>
+        <p>
+          • Daily ads: {minAds} ({u.total_ads}) {u.total_ads >= minAds ? "✅" : "❌"}
+        </p>
+        <p>• All Main + Partner tasks must be approved before withdraw</p>
       </div>
 
       {/* Withdraw modal */}
@@ -151,7 +174,9 @@ export function ProfileTab() {
           >
             <div className="flex items-center justify-between">
               <h3 className="font-bold text-lg neon-text-pink">Withdraw ROSE</h3>
-              <button onClick={() => setShowWd(false)}><X className="w-5 h-5" /></button>
+              <button onClick={() => setShowWd(false)}>
+                <X className="w-5 h-5" />
+              </button>
             </div>
             <div>
               <label className="text-xs text-muted-foreground">Amount</label>
@@ -168,6 +193,20 @@ export function ProfileTab() {
                 >
                   MAX
                 </button>
+              </div>
+              <div className="mt-2 rounded-xl bg-input/40 px-3 py-2 text-xs text-muted-foreground space-y-1">
+                <div className="flex items-center justify-between">
+                  <span>Gross</span>
+                  <span>{amountNum ? amountNum.toFixed(2) : "0.00"} ROSE</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Fee</span>
+                  <span>{fee.toFixed(2)} ROSE</span>
+                </div>
+                <div className="flex items-center justify-between text-rose-gold font-semibold">
+                  <span>Net payout</span>
+                  <span>{netAmount.toFixed(2)} ROSE</span>
+                </div>
               </div>
             </div>
             <div>
@@ -199,10 +238,14 @@ export function ProfileTab() {
           <div className="max-w-md mx-auto pt-8 space-y-2" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <h3 className="text-xl font-bold neon-text-pink">Withdraw History</h3>
-              <button onClick={() => setShowHistory(false)}><X className="w-5 h-5" /></button>
+              <button onClick={() => setShowHistory(false)}>
+                <X className="w-5 h-5" />
+              </button>
             </div>
             {history.length === 0 && (
-              <p className="text-center text-sm text-muted-foreground glass rounded-xl p-6">No withdrawals yet</p>
+              <p className="text-center text-sm text-muted-foreground glass rounded-xl p-6">
+                No withdrawals yet
+              </p>
             )}
             {history.map((w) => (
               <button
@@ -224,8 +267,8 @@ export function ProfileTab() {
                     w.status === "approved"
                       ? "bg-emerald-500/20 text-emerald-300"
                       : w.status === "rejected"
-                      ? "bg-red-500/20 text-red-300"
-                      : "bg-amber-500/20 text-amber-300"
+                        ? "bg-red-500/20 text-red-300"
+                        : "bg-amber-500/20 text-amber-300"
                   }`}
                 >
                   {w.status}
@@ -237,21 +280,42 @@ export function ProfileTab() {
       )}
 
       {detail && (
-        <div className="fixed inset-0 z-[60] bg-background/95 p-4 flex items-center justify-center" onClick={() => setDetail(null)}>
-          <div className="glass rounded-2xl p-5 max-w-sm w-full space-y-2" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 z-[60] bg-background/95 p-4 flex items-center justify-center"
+          onClick={() => setDetail(null)}
+        >
+          <div
+            className="glass rounded-2xl p-5 max-w-sm w-full space-y-2"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between">
               <h3 className="font-bold">Withdrawal Details</h3>
-              <button onClick={() => setDetail(null)}><X className="w-5 h-5" /></button>
+              <button onClick={() => setDetail(null)}>
+                <X className="w-5 h-5" />
+              </button>
             </div>
             <div className="text-sm space-y-1">
-              <p><span className="text-muted-foreground">Amount:</span> {detail.amount} ROSE</p>
-              <p><span className="text-muted-foreground">Status:</span> {detail.status}</p>
-              <p className="break-all"><span className="text-muted-foreground">Address:</span> {detail.wallet_address}</p>
+              <p>
+                <span className="text-muted-foreground">Amount:</span> {detail.amount} ROSE
+              </p>
+              <p>
+                <span className="text-muted-foreground">Status:</span> {detail.status}
+              </p>
+              <p className="break-all">
+                <span className="text-muted-foreground">Address:</span> {detail.wallet_address}
+              </p>
               {detail.tx_id && (
-                <p className="break-all"><span className="text-muted-foreground">TX:</span> {detail.tx_id}</p>
+                <p className="break-all">
+                  <span className="text-muted-foreground">TX:</span> {detail.tx_id}
+                </p>
               )}
-              <p><span className="text-muted-foreground">Date:</span> {new Date(detail.created_at).toLocaleString()}</p>
-              {detail.reject_reason && <p className="text-red-300">Reason: {detail.reject_reason}</p>}
+              <p>
+                <span className="text-muted-foreground">Date:</span>{" "}
+                {new Date(detail.created_at).toLocaleString()}
+              </p>
+              {detail.reject_reason && (
+                <p className="text-red-300">Reason: {detail.reject_reason}</p>
+              )}
             </div>
           </div>
         </div>

@@ -42,7 +42,7 @@ export const Route = createFileRoute("/api/public/telegram/webhook")({
             const sb = createClient(
               process.env.SUPABASE_URL!,
               process.env.SUPABASE_SERVICE_ROLE_KEY!,
-              { auth: { autoRefreshToken: false, persistSession: false } }
+              { auth: { autoRefreshToken: false, persistSession: false } },
             );
             const { data: existing } = await sb
               .from("app_users")
@@ -57,18 +57,23 @@ export const Route = createFileRoute("/api/public/telegram/webhook")({
           const keyboard = {
             inline_keyboard: [
               [{ text: "🚀 Open RosePayFi", url: "https://t.me/RosePayFibot?startapp=open" }],
-              [{ text: "📢 Community", url: "https://t.me/rosepayfi" }, { text: "💸 Payments", url: "https://t.me/rosepayfipayment" }],
+              [
+                { text: "📢 Community", url: "https://t.me/rosepayfi" },
+                { text: "💸 Payments", url: "https://t.me/rosepayfipayment" },
+              ],
             ],
           };
 
           // Try to send a photo first; fall back to text-only
           const photoSent = await tg("sendPhoto", {
             chat_id: chatId,
-            photo: "https://rose-pay-grow.lovable.app/og.jpg",
+            photo: "https://rose-pay-grow.lovable.app/rosepayfi-share.jpg",
             caption: WELCOME_TEXT,
             parse_mode: "HTML",
             reply_markup: keyboard,
-          }).then((r) => r.ok).catch(() => false);
+          })
+            .then((r) => r.ok)
+            .catch(() => false);
 
           if (!photoSent) {
             await tg("sendMessage", {
@@ -85,7 +90,11 @@ export const Route = createFileRoute("/api/public/telegram/webhook")({
           await tg("sendMessage", {
             chat_id: chatId,
             text: "Use /start to open the app. For support contact @RosePayFiSupport",
-            reply_markup: { inline_keyboard: [[{ text: "🚀 Open RosePayFi", url: "https://t.me/RosePayFibot?startapp=open" }]] },
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: "🚀 Open RosePayFi", url: "https://t.me/RosePayFibot?startapp=open" }],
+              ],
+            },
           });
         }
         return new Response("ok");

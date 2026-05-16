@@ -10,7 +10,12 @@ declare global {
         expand: () => void;
         openTelegramLink: (url: string) => void;
         openLink: (url: string) => void;
-        HapticFeedback?: { impactOccurred: (s: string) => void; notificationOccurred: (s: string) => void };
+        shareToStory?: (media_url: string, params?: any) => void;
+        showPopup?: (params: any, cb?: (buttonId: string) => void) => void;
+        HapticFeedback?: {
+          impactOccurred: (s: string) => void;
+          notificationOccurred: (s: string) => void;
+        };
         themeParams?: any;
         colorScheme?: string;
         version?: string;
@@ -35,6 +40,7 @@ interface Ctx {
   isInTelegram: boolean;
   openLink: (url: string) => void;
   openTelegramLink: (url: string) => void;
+  showPopup: (title: string, message: string) => void;
   haptic: (type?: "light" | "medium" | "heavy" | "success" | "error") => void;
 }
 
@@ -49,6 +55,7 @@ export function TelegramProvider({ children }: { children: ReactNode }) {
     isInTelegram: false,
     openLink: () => {},
     openTelegramLink: () => {},
+    showPopup: () => {},
     haptic: () => {},
   });
 
@@ -58,7 +65,9 @@ export function TelegramProvider({ children }: { children: ReactNode }) {
       const tg = window.Telegram?.WebApp;
       if (tg) {
         tg.ready();
-        try { tg.expand(); } catch {}
+        try {
+          tg.expand();
+        } catch {}
         const u = tg.initDataUnsafe?.user || null;
         const sp = tg.initDataUnsafe?.start_param || null;
         const initData = tg.initData || "";
@@ -66,7 +75,8 @@ export function TelegramProvider({ children }: { children: ReactNode }) {
         let finalUser = u;
         let finalInit = initData;
         if (!finalUser) {
-          const fakeId = Number(localStorage.getItem("dev_tg_id") || "0") || Math.floor(Math.random() * 1e9);
+          const fakeId =
+            Number(localStorage.getItem("dev_tg_id") || "0") || Math.floor(Math.random() * 1e9);
           localStorage.setItem("dev_tg_id", String(fakeId));
           finalUser = {
             id: fakeId,
@@ -85,6 +95,15 @@ export function TelegramProvider({ children }: { children: ReactNode }) {
           openLink: (url: string) => (tg.openLink ? tg.openLink(url) : window.open(url, "_blank")),
           openTelegramLink: (url: string) =>
             tg.openTelegramLink ? tg.openTelegramLink(url) : window.open(url, "_blank"),
+          showPopup: (title: string, message: string) => {
+            try {
+              tg.showPopup?.({
+                title,
+                message,
+                buttons: [{ id: "ok", type: "default", text: "OK" }],
+              });
+            } catch {}
+          },
           haptic: (type = "light") => {
             try {
               if (type === "success" || type === "error") {
@@ -97,7 +116,8 @@ export function TelegramProvider({ children }: { children: ReactNode }) {
         });
       } else {
         // Pure browser dev mode
-        const fakeId = Number(localStorage.getItem("dev_tg_id") || "0") || Math.floor(Math.random() * 1e9);
+        const fakeId =
+          Number(localStorage.getItem("dev_tg_id") || "0") || Math.floor(Math.random() * 1e9);
         localStorage.setItem("dev_tg_id", String(fakeId));
         const fakeUser = { id: fakeId, first_name: "Dev", username: "dev_user_" + fakeId };
         const userParam = encodeURIComponent(JSON.stringify(fakeUser));
@@ -110,6 +130,7 @@ export function TelegramProvider({ children }: { children: ReactNode }) {
           isInTelegram: false,
           openLink: (url) => window.open(url, "_blank"),
           openTelegramLink: (url) => window.open(url, "_blank"),
+          showPopup: () => {},
           haptic: () => {},
         });
       }

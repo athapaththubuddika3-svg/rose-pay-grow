@@ -1,4 +1,12 @@
-import { createContext, useContext, useEffect, useRef, useState, ReactNode, useCallback } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  ReactNode,
+  useCallback,
+} from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { useTelegram } from "./TelegramProvider";
 import { recordAutoAd } from "@/lib/api.functions";
@@ -21,7 +29,9 @@ interface Ctx {
   ready: boolean;
   showRewarded: (blockId: string) => Promise<{ ok: boolean; durationSec: number; error?: string }>;
   showTask: (blockId: string) => Promise<{ ok: boolean; durationSec: number; error?: string }>;
-  showInterstitial: (blockId: string) => Promise<{ ok: boolean; durationSec: number; error?: string }>;
+  showInterstitial: (
+    blockId: string,
+  ) => Promise<{ ok: boolean; durationSec: number; error?: string }>;
 }
 
 const AdsCtx = createContext<Ctx | null>(null);
@@ -41,6 +51,12 @@ function getAdCandidates(rawBlockId: string, kind: AdKind) {
       list.add(`int-${digits}`);
       list.add(digits);
     }
+  } else if (kind === "task") {
+    if (/^task-\d+$/i.test(raw)) list.add(raw.toLowerCase());
+    if (digits) {
+      list.add(`task-${digits}`);
+      list.add(digits);
+    }
   } else {
     if (/^\d+$/.test(raw)) list.add(raw);
     if (digits) list.add(digits);
@@ -56,9 +72,15 @@ function loadSdk(): Promise<boolean> {
     const exists = document.querySelector('script[data-sad="1"]');
     if (exists) {
       const wait = setInterval(() => {
-        if (window.Adsgram) { clearInterval(wait); resolve(true); }
+        if (window.Adsgram) {
+          clearInterval(wait);
+          resolve(true);
+        }
       }, 200);
-      setTimeout(() => { clearInterval(wait); resolve(!!window.Adsgram); }, 5000);
+      setTimeout(() => {
+        clearInterval(wait);
+        resolve(!!window.Adsgram);
+      }, 5000);
       return;
     }
     const s = document.createElement("script");
@@ -93,35 +115,44 @@ export function AdsgramProvider({ children }: { children: ReactNode }) {
     return controllers.current[blockId];
   }, []);
 
-  const showAd = useCallback(async (blockId: string, kind: AdKind) => {
-    const candidates = getAdCandidates(blockId, kind);
-    if (!candidates.length) return { ok: false, durationSec: 0, error: "Ad block is not configured" };
+  const showAd = useCallback(
+    async (blockId: string, kind: AdKind) => {
+      const candidates = getAdCandidates(blockId, kind);
+      if (!candidates.length)
+        return { ok: false, durationSec: 0, error: "Ad block is not configured" };
 
-    let lastError = "Ad failed to load";
+      let lastError = "Ad failed to load";
 
-    for (const candidate of candidates) {
-      const c = getController(candidate);
-      if (!c) {
-        lastError = "Ad SDK not loaded";
-        continue;
-      }
-
-      const startedAt = Date.now();
-      try {
-        const r = await c.show();
-        const durationSec = Math.floor((Date.now() - startedAt) / 1000);
-        if (r?.error) {
-          lastError = r.description || "Ad error";
+      for (const candidate of candidates) {
+        const c = getController(candidate);
+        if (!c) {
+          lastError = "Ad SDK not loaded";
           continue;
         }
-        return { ok: !!r?.done || r?.state === "load" || true, durationSec };
-      } catch (e: any) {
-        lastError = e?.message || "Ad failed to load";
-      }
-    }
 
-    return { ok: false, durationSec: 0, error: lastError };
-  }, [getController]);
+        const startedAt = Date.now();
+        try {
+          const r = await c.show();
+          const durationSec = Math.floor((Date.now() - startedAt) / 1000);
+          if (r?.error) {
+            lastError = r.description || "Ad error";
+            continue;
+          }
+          const ok = r?.done === true || r?.state === "load" || r?.state === "completed";
+          if (!ok) {
+            lastError = r?.description || "Ad was closed too early";
+            continue;
+          }
+          return { ok: true, durationSec };
+        } catch (e: any) {
+          lastError = e?.message || "Ad failed to load";
+        }
+      }
+
+      return { ok: false, durationSec: 0, error: lastError };
+    },
+    [getController],
+  );
 
   // Auto interstitials: random 2-5s after open, then random 40-70s repeatedly
   useEffect(() => {
@@ -133,7 +164,11 @@ export function AdsgramProvider({ children }: { children: ReactNode }) {
       if (cancelled) return;
       const r = await showAd(AUTO_INT_BLOCK, "interstitial");
       if (r.ok && r.durationSec > 0 && tg.initData) {
-        try { await recordAuto({ data: { initData: tg.initData, durationSec: r.durationSec, blockId: AUTO_INT_BLOCK } }); } catch {}
+        try {
+          await recordAuto({
+            data: { initData: tg.initData, durationSec: r.durationSec, blockId: AUTO_INT_BLOCK },
+          });
+        } catch {}
       }
       const next = 40 + Math.floor(Math.random() * 31); // 40-70s
       timer = setTimeout(run, next * 1000);
@@ -142,16 +177,21 @@ export function AdsgramProvider({ children }: { children: ReactNode }) {
     const first = 2 + Math.random() * 3; // 2-5s
     timer = setTimeout(run, first * 1000);
 
-    return () => { cancelled = true; clearTimeout(timer); };
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [ready, tg.ready, tg.initData, showAd, recordAuto]);
 
   return (
-    <AdsCtx.Provider value={{
-      ready,
-      showRewarded: (blockId) => showAd(blockId, "rewarded"),
-      showTask: (blockId) => showAd(blockId, "task"),
-      showInterstitial: (blockId) => showAd(blockId, "interstitial"),
-    }}>
+    <AdsCtx.Provider
+      value={{
+        ready,
+        showRewarded: (blockId) => showAd(blockId, "rewarded"),
+        showTask: (blockId) => showAd(blockId, "task"),
+        showInterstitial: (blockId) => showAd(blockId, "interstitial"),
+      }}
+    >
       {children}
     </AdsCtx.Provider>
   );

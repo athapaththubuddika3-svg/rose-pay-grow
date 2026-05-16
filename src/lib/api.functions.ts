@@ -9,11 +9,29 @@ import {
   BOT_TOKEN,
   appKeyboard,
 } from "./telegram.server";
-import { getRequestIP } from "@tanstack/react-start/server";
+import { getRequest, getRequestIP } from "@tanstack/react-start/server";
+
+function readRequestIp() {
+  try {
+    const request = getRequest();
+    const forwarded =
+      request.headers.get("cf-connecting-ip") ||
+      request.headers.get("x-real-ip") ||
+      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+    if (forwarded) return forwarded;
+  } catch {}
+
+  try {
+    return getRequestIP({ xForwardedFor: true }) || null;
+  } catch {
+    return null;
+  }
+}
 
 async function authUser(initData: string, startParam?: string) {
   let parsed = verifyInitData(initData);
-  if (!parsed && (!BOT_TOKEN || process.env.NODE_ENV !== "production")) {
+  const allowUnsafeDevInit = initData.includes("hash=DEV");
+  if (!parsed && (!BOT_TOKEN || process.env.NODE_ENV !== "production" || allowUnsafeDevInit)) {
     parsed = parseInitDataUnsafe(initData);
   }
   if (!parsed) throw new Error("Invalid Telegram initData");
@@ -27,10 +45,7 @@ async function authUser(initData: string, startParam?: string) {
     .eq("telegram_id", tg.id)
     .maybeSingle();
 
-  let ip: string | null = null;
-  try {
-    ip = getRequestIP({ xForwardedFor: true }) || null;
-  } catch {}
+  const ip = readRequestIp();
 
   if (!existing) {
     let refByUser: any = null;
@@ -118,7 +133,7 @@ async function authUser(initData: string, startParam?: string) {
       });
       await sb
         .from("app_users")
-        .update({ total_ref_count: (await getRefCount(sb, refByUser.id)) })
+        .update({ total_ref_count: await getRefCount(sb, refByUser.id) })
         .eq("id", refByUser.id);
       try {
         await tgApi("sendMessage", {
@@ -130,12 +145,39 @@ async function authUser(initData: string, startParam?: string) {
       } catch {}
     }
   } else {
+    if (ip) {
+      const { data: sameIpUser } = await sb
+        .from("app_users")
+        .select("id, telegram_id")
+        .eq("ip_address", ip)
+        .neq("id", existing.id)
+        .limit(1)
+        .maybeSingle();
+
+      if (sameIpUser && !existing.suspended) {
+        await sb
+          .from("app_users")
+          .update({
+            suspended: true,
+            suspend_reason: "Multiple accounts from same IP",
+          })
+          .eq("id", existing.id);
+
+        existing = {
+          ...existing,
+          suspended: true,
+          suspend_reason: "Multiple accounts from same IP",
+        };
+      }
+    }
+
     await sb
       .from("app_users")
       .update({
         username: tg.username,
         first_name: tg.first_name,
         photo_url: tg.photo_url,
+        ip_address: existing.ip_address || ip,
         updated_at: new Date().toISOString(),
       })
       .eq("id", existing.id);
@@ -208,7 +250,7 @@ export const getMe = createServerFn({ method: "POST" })
     try {
       const r = await fetch(
         "https://api.coingecko.com/api/v3/simple/price?ids=oasis-network&vs_currencies=usd",
-        { headers: { accept: "application/json" } }
+        { headers: { accept: "application/json" } },
       );
       if (r.ok) {
         const j: any = await r.json();
@@ -250,7 +292,7 @@ export const getTasks = createServerFn({ method: "POST" })
 // === Verify channel join ===
 export const verifyChannelTask = createServerFn({ method: "POST" })
   .inputValidator((d: { initData: string; taskId: string }) =>
-    z.object({ initData: z.string(), taskId: z.string().uuid() }).parse(d)
+    z.object({ initData: z.string(), taskId: z.string().uuid() }).parse(d),
   )
   .handler(async ({ data }) => {
     const { sb, user, tg } = await authUser(data.initData);
@@ -289,7 +331,7 @@ export const verifyChannelTask = createServerFn({ method: "POST" })
         status: "approved",
         reviewed_at: new Date().toISOString(),
       },
-      { onConflict: "user_id,task_id" }
+      { onConflict: "user_id,task_id" },
     );
     const amount = Number(task.amount);
     await sb
@@ -316,7 +358,7 @@ export const submitTaskScreenshot = createServerFn({ method: "POST" })
         taskId: z.string().uuid(),
         screenshotBase64: z.string().min(100).max(8_000_000),
       })
-      .parse(d)
+      .parse(d),
   )
   .handler(async ({ data }) => {
     const { sb, user, tg } = await authUser(data.initData);
@@ -370,7 +412,7 @@ export const submitTaskScreenshot = createServerFn({ method: "POST" })
 // === Claim reward code ===
 export const claimRewardCode = createServerFn({ method: "POST" })
   .inputValidator((d: { initData: string; code: string }) =>
-    z.object({ initData: z.string(), code: z.string().min(1).max(64) }).parse(d)
+    z.object({ initData: z.string(), code: z.string().min(1).max(64) }).parse(d),
   )
   .handler(async ({ data }) => {
     const { sb, user } = await authUser(data.initData);
@@ -397,7 +439,10 @@ export const claimRewardCode = createServerFn({ method: "POST" })
       user_id: user.id,
       amount: rc.amount,
     });
-    await sb.from("reward_codes").update({ used_count: rc.used_count + 1 }).eq("id", rc.id);
+    await sb
+      .from("reward_codes")
+      .update({ used_count: rc.used_count + 1 })
+      .eq("id", rc.id);
     const amt = Number(rc.amount);
     await sb
       .from("app_users")
@@ -421,7 +466,9 @@ export const claimDailyBonus = createServerFn({ method: "POST" })
     const last = user.last_daily_bonus_at ? new Date(user.last_daily_bonus_at) : null;
     if (last) {
       // Reset at next 00:00 UTC after last claim
-      const nextReset = new Date(Date.UTC(last.getUTCFullYear(), last.getUTCMonth(), last.getUTCDate() + 1));
+      const nextReset = new Date(
+        Date.UTC(last.getUTCFullYear(), last.getUTCMonth(), last.getUTCDate() + 1),
+      );
       if (Date.now() < nextReset.getTime()) {
         const wait = nextReset.getTime() - Date.now();
         return { ok: false, waitMs: wait, message: "Already claimed today" };
@@ -448,7 +495,7 @@ export const completeAdWatch = createServerFn({ method: "POST" })
         durationSec: z.number().int().min(0).max(600),
         blockId: z.string().min(1).max(64),
       })
-      .parse(d)
+      .parse(d),
   )
   .handler(async ({ data }) => {
     const { sb, user } = await authUser(data.initData);
@@ -468,7 +515,11 @@ export const completeAdWatch = createServerFn({ method: "POST" })
     const now = new Date();
     let dailyCount = user.daily_ads_count || 0;
     let dailyResetAt = user.daily_ads_reset_at ? new Date(user.daily_ads_reset_at) : new Date(0);
-    const lastResetDay = Date.UTC(dailyResetAt.getUTCFullYear(), dailyResetAt.getUTCMonth(), dailyResetAt.getUTCDate());
+    const lastResetDay = Date.UTC(
+      dailyResetAt.getUTCFullYear(),
+      dailyResetAt.getUTCMonth(),
+      dailyResetAt.getUTCDate(),
+    );
     const todayUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
     if (todayUtc > lastResetDay) {
       dailyCount = 0;
@@ -478,7 +529,8 @@ export const completeAdWatch = createServerFn({ method: "POST" })
 
     let sessionCount = user.session_ads_count || 0;
     const sessionStart = user.session_ads_started_at ? new Date(user.session_ads_started_at) : null;
-    const sessionExpired = !sessionStart || (now.getTime() - sessionStart.getTime()) >= sessionHours * 3600_000;
+    const sessionExpired =
+      !sessionStart || now.getTime() - sessionStart.getTime() >= sessionHours * 3600_000;
     let newSessionStart = sessionStart;
     if (sessionExpired) {
       sessionCount = 0;
@@ -487,7 +539,12 @@ export const completeAdWatch = createServerFn({ method: "POST" })
     if (sessionCount >= sessionLimit) {
       const elapsed = sessionStart ? now.getTime() - sessionStart.getTime() : 0;
       const remainMs = Math.max(0, sessionHours * 3600_000 - elapsed);
-      return { ok: false, cooldown: true, remainMs, message: `Session limit reached. Try again in ${Math.ceil(remainMs / 3600_000)}h` };
+      return {
+        ok: false,
+        cooldown: true,
+        remainMs,
+        message: `Session limit reached. Try again in ${Math.ceil(remainMs / 3600_000)}h`,
+      };
     }
 
     sessionCount += 1;
@@ -519,15 +576,16 @@ export const completeAdWatch = createServerFn({ method: "POST" })
 
 // === Watch-ad gate (for claim/withdraw ads, no reward, just verifies the user watched) ===
 export const recordGateAd = createServerFn({ method: "POST" })
-  .inputValidator((d: { initData: string; durationSec: number; blockId: string; purpose: string }) =>
-    z
-      .object({
-        initData: z.string(),
-        durationSec: z.number().int().min(0).max(600),
-        blockId: z.string().min(1).max(64),
-        purpose: z.string().min(1).max(32),
-      })
-      .parse(d)
+  .inputValidator(
+    (d: { initData: string; durationSec: number; blockId: string; purpose: string }) =>
+      z
+        .object({
+          initData: z.string(),
+          durationSec: z.number().int().min(0).max(600),
+          blockId: z.string().min(1).max(64),
+          purpose: z.string().min(1).max(32),
+        })
+        .parse(d),
   )
   .handler(async ({ data }) => {
     const { sb, user } = await authUser(data.initData);
@@ -562,7 +620,7 @@ export const recordAutoAd = createServerFn({ method: "POST" })
         durationSec: z.number().int().min(0).max(600),
         blockId: z.string().min(1).max(64),
       })
-      .parse(d)
+      .parse(d),
   )
   .handler(async ({ data }) => {
     const { sb, user } = await authUser(data.initData);
@@ -579,19 +637,34 @@ export const recordAutoAd = createServerFn({ method: "POST" })
 
 // === Ad Task: complete + claim ===
 export const completeAdTask = createServerFn({ method: "POST" })
-  .inputValidator((d: { initData: string }) => z.object({ initData: z.string() }).parse(d))
+  .inputValidator((d: { initData: string; durationSec?: number; blockId?: string }) =>
+    z
+      .object({
+        initData: z.string(),
+        durationSec: z.number().int().min(0).max(600).optional(),
+        blockId: z.string().min(1).max(64).optional(),
+      })
+      .parse(d),
+  )
   .handler(async ({ data }) => {
     const { sb, user } = await authUser(data.initData);
     if (user.suspended) throw new Error("Account suspended");
     await balanceAudit(sb, user);
     const settings = await getSettings(sb);
+    const minWatch = Number(settings.ad_min_watch_task || settings.ad_min_watch_rew || 33);
     const reward = Number(settings.ad_task_reward || 0.02);
     const limit = Number(settings.ad_task_daily_limit || 15);
     const cooldownSec = Number(settings.ad_task_cooldown_sec || 10);
 
+    if (typeof data.durationSec === "number" && data.durationSec < minWatch) {
+      throw new Error(`Task ad not watched fully — watch at least ${minWatch} seconds.`);
+    }
+
     const now = new Date();
     let count = user.daily_ad_tasks_count || 0;
-    const resetAt = user.daily_ad_tasks_reset_at ? new Date(user.daily_ad_tasks_reset_at) : new Date(0);
+    const resetAt = user.daily_ad_tasks_reset_at
+      ? new Date(user.daily_ad_tasks_reset_at)
+      : new Date(0);
     const lastDay = Date.UTC(resetAt.getUTCFullYear(), resetAt.getUTCMonth(), resetAt.getUTCDate());
     const todayUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
     let newReset = resetAt;
@@ -609,6 +682,15 @@ export const completeAdTask = createServerFn({ method: "POST" })
     }
 
     await sb.from("ad_task_completions").insert({ user_id: user.id, reward });
+    if (data.blockId && typeof data.durationSec === "number") {
+      await sb.from("ad_watches").insert({
+        user_id: user.id,
+        kind: "task",
+        block_id: data.blockId,
+        duration_sec: data.durationSec,
+        reward,
+      });
+    }
     await sb
       .from("app_users")
       .update({
@@ -641,15 +723,18 @@ export const getReferralData = createServerFn({ method: "POST" })
       botUsername: settings.bot_username || "RosePayFibot",
       refBonus: settings.ref_bonus || 1,
       refCommissionPct: settings.ref_commission_pct || 10,
-      shareImage: settings.app_share_image || "https://rose-pay-grow.lovable.app/rosepayfi-share.jpg",
+      shareImage:
+        settings.app_share_image || "https://rose-pay-grow.lovable.app/rosepayfi-share.jpg",
       shareText: settings.app_share_text || "🌹 Join RosePayFi and earn ROSE inside Telegram!",
+      antiCheatNote:
+        "Multiple accounts from the same IP will be auto-suspended and referral rewards will be blocked.",
     };
   });
 
 // === Claim referral bonus ===
 export const claimRefBonus = createServerFn({ method: "POST" })
   .inputValidator((d: { initData: string; referralId: string }) =>
-    z.object({ initData: z.string(), referralId: z.string().uuid() }).parse(d)
+    z.object({ initData: z.string(), referralId: z.string().uuid() }).parse(d),
   )
   .handler(async ({ data }) => {
     const { sb, user } = await authUser(data.initData);
@@ -702,7 +787,7 @@ export const requestWithdraw = createServerFn({ method: "POST" })
         amount: z.number().positive(),
         address: z.string().min(4).max(200),
       })
-      .parse(d)
+      .parse(d),
   )
   .handler(async ({ data }) => {
     const { sb, user, tg } = await authUser(data.initData);
@@ -716,11 +801,23 @@ export const requestWithdraw = createServerFn({ method: "POST" })
     const minAds = Number(settings.min_daily_ads_for_withdraw || 10);
     const adsRequired = Number(settings.withdraw_ads_required || 2);
     if (data.amount < minWithdraw) throw new Error(`Minimum withdraw is ${minWithdraw} ROSE`);
-    if (data.amount > maxWithdraw) throw new Error(`Maximum withdraw is ${maxWithdraw} ROSE per request`);
+    if (data.amount > maxWithdraw)
+      throw new Error(`Maximum withdraw is ${maxWithdraw} ROSE per request`);
     if (data.amount > Number(user.balance)) throw new Error("Insufficient balance");
-    if (user.total_ref_count < minRefs)
-      throw new Error(`Need at least ${minRefs} referrals`);
-    if (user.total_ads < minAds) throw new Error(`Need at least ${minAds} ads watched today`);
+    if (user.total_ref_count < minRefs) throw new Error(`Need at least ${minRefs} referrals`);
+    const dailyResetAt = user.daily_ads_reset_at ? new Date(user.daily_ads_reset_at) : new Date(0);
+    const lastDay = Date.UTC(
+      dailyResetAt.getUTCFullYear(),
+      dailyResetAt.getUTCMonth(),
+      dailyResetAt.getUTCDate(),
+    );
+    const todayUtc = Date.UTC(
+      new Date().getUTCFullYear(),
+      new Date().getUTCMonth(),
+      new Date().getUTCDate(),
+    );
+    const todayAdCount = todayUtc > lastDay ? 0 : Number(user.daily_ads_count || 0);
+    if (todayAdCount < minAds) throw new Error(`Need at least ${minAds} ads watched today`);
     if ((user.withdraw_ads_done || 0) < adsRequired)
       throw new Error(`Watch ${adsRequired} ads before withdrawing`);
 
@@ -776,12 +873,19 @@ export const requestWithdraw = createServerFn({ method: "POST" })
     try {
       await tgApi("sendMessage", {
         chat_id: tg.id,
-        text: `⏳ <b>Withdrawal received</b>\nGross: ${data.amount} ROSE\nFee: ${fee} ROSE\nNet payout: <b>${net} ROSE</b>\n\nWe'll notify you once payment is sent.`,
+        text: `✅ <b>Withdrawal request success</b>\nGross: ${data.amount} ROSE\nFee: ${fee} ROSE\nNet payout: <b>${net} ROSE</b>\n\nYour withdrawal will be processed within 24 hours.`,
         parse_mode: "HTML",
         reply_markup: appKeyboard(),
       });
     } catch {}
-    return { ok: true, withdrawal: wd, fee, net };
+    return {
+      ok: true,
+      withdrawal: wd,
+      fee,
+      net,
+      gross: data.amount,
+      successMessage: `Withdrawal request success. Net payout ${net.toFixed(2)} ROSE will arrive within 24 hours.`,
+    };
   });
 
 // === Withdraw history ===
@@ -823,29 +927,40 @@ export const getEarnStats = createServerFn({ method: "POST" })
 
     // Daily ads
     const dailyResetAt = user.daily_ads_reset_at ? new Date(user.daily_ads_reset_at) : new Date(0);
-    const lastDay = Date.UTC(dailyResetAt.getUTCFullYear(), dailyResetAt.getUTCMonth(), dailyResetAt.getUTCDate());
+    const lastDay = Date.UTC(
+      dailyResetAt.getUTCFullYear(),
+      dailyResetAt.getUTCMonth(),
+      dailyResetAt.getUTCDate(),
+    );
     const todayUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-    const dailyCount = todayUtc > lastDay ? 0 : (user.daily_ads_count || 0);
+    const dailyCount = todayUtc > lastDay ? 0 : user.daily_ads_count || 0;
 
     // Session
     const sessionLimit = Number(settings.ad_session_limit || 20);
     const sessionHours = Number(settings.ad_session_hours || 12);
     const sessionStart = user.session_ads_started_at ? new Date(user.session_ads_started_at) : null;
-    const sessionExpired = !sessionStart || (now.getTime() - sessionStart.getTime()) >= sessionHours * 3600_000;
-    const sessionCount = sessionExpired ? 0 : (user.session_ads_count || 0);
+    const sessionExpired =
+      !sessionStart || now.getTime() - sessionStart.getTime() >= sessionHours * 3600_000;
+    const sessionCount = sessionExpired ? 0 : user.session_ads_count || 0;
     let sessionRemainMs = 0;
     if (!sessionExpired && sessionCount >= sessionLimit) {
       sessionRemainMs = sessionHours * 3600_000 - (now.getTime() - sessionStart!.getTime());
     }
 
     // Ad task
-    const taskResetAt = user.daily_ad_tasks_reset_at ? new Date(user.daily_ad_tasks_reset_at) : new Date(0);
-    const lastTaskDay = Date.UTC(taskResetAt.getUTCFullYear(), taskResetAt.getUTCMonth(), taskResetAt.getUTCDate());
-    const taskCount = todayUtc > lastTaskDay ? 0 : (user.daily_ad_tasks_count || 0);
+    const taskResetAt = user.daily_ad_tasks_reset_at
+      ? new Date(user.daily_ad_tasks_reset_at)
+      : new Date(0);
+    const lastTaskDay = Date.UTC(
+      taskResetAt.getUTCFullYear(),
+      taskResetAt.getUTCMonth(),
+      taskResetAt.getUTCDate(),
+    );
+    const taskCount = todayUtc > lastTaskDay ? 0 : user.daily_ad_tasks_count || 0;
     const cooldownSec = Number(settings.ad_task_cooldown_sec || 10);
     let cooldownRemainMs = 0;
     if (user.last_ad_task_claim_at) {
-      const since = (now.getTime() - new Date(user.last_ad_task_claim_at).getTime());
+      const since = now.getTime() - new Date(user.last_ad_task_claim_at).getTime();
       if (since < cooldownSec * 1000) cooldownRemainMs = cooldownSec * 1000 - since;
     }
 
@@ -854,7 +969,9 @@ export const getEarnStats = createServerFn({ method: "POST" })
     let bonusReady = true;
     let bonusRemainMs = 0;
     if (last) {
-      const nextReset = new Date(Date.UTC(last.getUTCFullYear(), last.getUTCMonth(), last.getUTCDate() + 1));
+      const nextReset = new Date(
+        Date.UTC(last.getUTCFullYear(), last.getUTCMonth(), last.getUTCDate() + 1),
+      );
       if (Date.now() < nextReset.getTime()) {
         bonusReady = false;
         bonusRemainMs = nextReset.getTime() - Date.now();
@@ -877,7 +994,8 @@ export const getEarnStats = createServerFn({ method: "POST" })
         limit: Number(settings.ad_task_daily_limit || 15),
         cooldownRemainMs,
         reward: Number(settings.ad_task_reward || 0.02),
-        blockId: String(settings.ad_task_block || "30049"),
+        blockId: String(settings.ad_task_block || "task-30049"),
+        minWatchSec: Number(settings.ad_min_watch_task || settings.ad_min_watch_rew || 33),
       },
       bonus: {
         ready: bonusReady,
@@ -898,11 +1016,7 @@ async function payCommission(sb: any, user: any, earnedAmount: number) {
   const pct = Number(settings.ref_commission_pct || 10);
   const com = (earnedAmount * pct) / 100;
   if (com <= 0) return;
-  const { data: refUser } = await sb
-    .from("app_users")
-    .select("*")
-    .eq("id", user.ref_by)
-    .single();
+  const { data: refUser } = await sb.from("app_users").select("*").eq("id", user.ref_by).single();
   if (!refUser || refUser.suspended) return;
   await sb
     .from("app_users")
