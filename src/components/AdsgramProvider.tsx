@@ -41,6 +41,12 @@ function getAdCandidates(rawBlockId: string, kind: AdKind) {
       list.add(`int-${digits}`);
       list.add(digits);
     }
+  } else if (kind === "task") {
+    if (/^task-\d+$/i.test(raw)) list.add(raw.toLowerCase());
+    if (digits) {
+      list.add(`task-${digits}`);
+      list.add(digits);
+    }
   } else {
     if (/^\d+$/.test(raw)) list.add(raw);
     if (digits) list.add(digits);
@@ -114,7 +120,12 @@ export function AdsgramProvider({ children }: { children: ReactNode }) {
           lastError = r.description || "Ad error";
           continue;
         }
-        return { ok: !!r?.done || r?.state === "load" || true, durationSec };
+        const ok = r?.done === true || r?.state === "load" || r?.state === "completed";
+        if (!ok) {
+          lastError = r?.description || "Ad was closed too early";
+          continue;
+        }
+        return { ok: true, durationSec };
       } catch (e: any) {
         lastError = e?.message || "Ad failed to load";
       }
