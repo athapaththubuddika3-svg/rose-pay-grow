@@ -64,7 +64,7 @@ export const Route = createFileRoute("/api/public/telegram/webhook")({
           // Try to send a photo first; fall back to text-only
           const photoSent = await tg("sendPhoto", {
             chat_id: chatId,
-            photo: "https://rose-pay-grow.lovable.app/og.jpg",
+            photo: "https://rose-pay-grow.lovable.app/rosepayfi-share.jpg",
             caption: WELCOME_TEXT,
             parse_mode: "HTML",
             reply_markup: keyboard,
