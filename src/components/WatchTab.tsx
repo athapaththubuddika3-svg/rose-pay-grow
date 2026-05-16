@@ -77,7 +77,8 @@ export function WatchTab() {
     try {
       const r = await ads.showTask(s.adTask.blockId);
       if (!r.ok) throw new Error(r.error || "Complete the ad task to earn");
-      const res = await adTask({ data: { initData: tg.initData } });
+      const res = await adTask({ data: { initData: tg.initData, durationSec: r.durationSec, blockId: s.adTask.blockId } });
+      if (!res.ok) throw new Error("Ad task failed");
       tg.haptic("success");
       toast.success(`🌹 +${res.amount} ROSE!`);
       reload();
@@ -109,6 +110,9 @@ export function WatchTab() {
   return (
     <div className="px-4 pt-4 pb-28 space-y-4">
       <h2 className="text-xl font-bold neon-text-pink">Watch & Earn</h2>
+      <p className="text-xs text-muted-foreground glass rounded-xl p-3">
+        Watch the full ad for at least {s.adTask.minWatchSec}s on Ad Tasks and the full rewarded ad to receive ROSE. Leaving early will show an error and no reward is given.
+      </p>
 
       {/* Daily Bonus */}
       <motion.div
@@ -202,7 +206,7 @@ export function WatchTab() {
             onClick={handleTask}
             className="px-4 py-2 rounded-xl gradient-cyan text-white text-sm font-bold disabled:opacity-50 flex items-center gap-1"
           >
-            {busy === "task" ? <Loader2 className="w-4 h-4 animate-spin" /> : s.adTask.cooldownRemainMs > 0 ? fmtMs(s.adTask.cooldownRemainMs) : s.adTask.count >= s.adTask.limit ? "Done" : "Start"}
+            {busy === "task" ? <Loader2 className="w-4 h-4 animate-spin" /> : s.adTask.cooldownRemainMs > 0 ? fmtMs(s.adTask.cooldownRemainMs) : s.adTask.count >= s.adTask.limit ? "Done" : "Start Task Ad"}
           </button>
         </div>
         <div className="mt-3 text-xs relative">
@@ -210,6 +214,7 @@ export function WatchTab() {
           <div className="h-1.5 bg-input rounded-full overflow-hidden">
             <motion.div className="h-full gradient-cyan" initial={{ width: 0 }} animate={{ width: `${taskPct}%` }} />
           </div>
+          <p className="text-muted-foreground mt-2">Task ad block: {s.adTask.blockId}</p>
         </div>
       </motion.div>
 
