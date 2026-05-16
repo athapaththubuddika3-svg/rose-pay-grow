@@ -24,7 +24,7 @@ function genToken() {
 
 export const adminLogin = createServerFn({ method: "POST" })
   .inputValidator((d: { email: string; password: string }) =>
-    z.object({ email: z.string().email(), password: z.string().min(4) }).parse(d)
+    z.object({ email: z.string().email(), password: z.string().min(4) }).parse(d),
   )
   .handler(async ({ data }) => {
     const sb = getAdminClient();
@@ -56,13 +56,18 @@ export const adminStats = createServerFn({ method: "POST" })
     const { sb } = await requireAdmin(data.token);
     const [users, tasks, withdrawals, codes, suspended, audits] = await Promise.all([
       sb.from("app_users").select("*", { count: "exact", head: true }),
-      sb.from("task_completions").select("*", { count: "exact", head: true }).eq("status", "pending"),
+      sb
+        .from("task_completions")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "pending"),
       sb.from("withdrawals").select("*", { count: "exact", head: true }).eq("status", "pending"),
       sb.from("reward_codes").select("*", { count: "exact", head: true }).eq("active", true),
       sb.from("app_users").select("*", { count: "exact", head: true }).eq("suspended", true),
       sb.from("balance_audits").select("*", { count: "exact", head: true }),
     ]);
-    const { data: totals } = await sb.from("app_users").select("balance, total_earned, total_withdraw");
+    const { data: totals } = await sb
+      .from("app_users")
+      .select("balance, total_earned, total_withdraw");
     const sumBal = (totals || []).reduce((a, r: any) => a + Number(r.balance), 0);
     const sumEarn = (totals || []).reduce((a, r: any) => a + Number(r.total_earned), 0);
     const sumWd = (totals || []).reduce((a, r: any) => a + Number(r.total_withdraw), 0);
@@ -82,13 +87,15 @@ export const adminStats = createServerFn({ method: "POST" })
 // === Users ===
 export const adminListUsers = createServerFn({ method: "POST" })
   .inputValidator((d: { token: string; search?: string }) =>
-    z.object({ token: z.string(), search: z.string().optional() }).parse(d)
+    z.object({ token: z.string(), search: z.string().optional() }).parse(d),
   )
   .handler(async ({ data }) => {
     const { sb } = await requireAdmin(data.token);
     let q = sb.from("app_users").select("*").order("created_at", { ascending: false }).limit(500);
     if (data.search) {
-      q = q.or(`username.ilike.%${data.search}%,first_name.ilike.%${data.search}%,telegram_id.eq.${Number(data.search) || 0}`);
+      q = q.or(
+        `username.ilike.%${data.search}%,first_name.ilike.%${data.search}%,telegram_id.eq.${Number(data.search) || 0}`,
+      );
     }
     const { data: list } = await q;
     return { users: list || [] };
@@ -96,19 +103,65 @@ export const adminListUsers = createServerFn({ method: "POST" })
 
 export const adminUserActivity = createServerFn({ method: "POST" })
   .inputValidator((d: { token: string; userId: string }) =>
-    z.object({ token: z.string(), userId: z.string().uuid() }).parse(d)
+    z.object({ token: z.string(), userId: z.string().uuid() }).parse(d),
   )
   .handler(async ({ data }) => {
     const { sb } = await requireAdmin(data.token);
-    const [{ data: user }, { data: adWatches }, { data: adTasks }, { data: tasks }, { data: withdrawals }, { data: referrals }, { data: codes }, { data: audit }] = await Promise.all([
+    const [
+      { data: user },
+      { data: adWatches },
+      { data: adTasks },
+      { data: tasks },
+      { data: withdrawals },
+      { data: referrals },
+      { data: codes },
+      { data: audit },
+    ] = await Promise.all([
       sb.from("app_users").select("*").eq("id", data.userId).single(),
-      sb.from("ad_watches").select("*").eq("user_id", data.userId).order("watched_at", { ascending: false }).limit(50),
-      sb.from("ad_task_completions").select("*").eq("user_id", data.userId).order("completed_at", { ascending: false }).limit(50),
-      sb.from("task_completions").select("*, task:task_id(title, type, amount)").eq("user_id", data.userId).order("created_at", { ascending: false }).limit(50),
-      sb.from("withdrawals").select("*").eq("user_id", data.userId).order("created_at", { ascending: false }).limit(50),
-      sb.from("referrals").select("*, referred:referred_id(username, first_name, telegram_id), referrer:referrer_id(username, first_name, telegram_id)").or(`referrer_id.eq.${data.userId},referred_id.eq.${data.userId}`).order("created_at", { ascending: false }).limit(50),
-      sb.from("reward_code_claims").select("*, reward_code:code_id(code)").eq("user_id", data.userId).order("created_at", { ascending: false }).limit(50),
-      sb.from("balance_audits").select("*").eq("user_id", data.userId).order("detected_at", { ascending: false }).limit(20),
+      sb
+        .from("ad_watches")
+        .select("*")
+        .eq("user_id", data.userId)
+        .order("watched_at", { ascending: false })
+        .limit(50),
+      sb
+        .from("ad_task_completions")
+        .select("*")
+        .eq("user_id", data.userId)
+        .order("completed_at", { ascending: false })
+        .limit(50),
+      sb
+        .from("task_completions")
+        .select("*, task:task_id(title, type, amount)")
+        .eq("user_id", data.userId)
+        .order("created_at", { ascending: false })
+        .limit(50),
+      sb
+        .from("withdrawals")
+        .select("*")
+        .eq("user_id", data.userId)
+        .order("created_at", { ascending: false })
+        .limit(50),
+      sb
+        .from("referrals")
+        .select(
+          "*, referred:referred_id(username, first_name, telegram_id), referrer:referrer_id(username, first_name, telegram_id)",
+        )
+        .or(`referrer_id.eq.${data.userId},referred_id.eq.${data.userId}`)
+        .order("created_at", { ascending: false })
+        .limit(50),
+      sb
+        .from("reward_code_claims")
+        .select("*, reward_code:code_id(code)")
+        .eq("user_id", data.userId)
+        .order("created_at", { ascending: false })
+        .limit(50),
+      sb
+        .from("balance_audits")
+        .select("*")
+        .eq("user_id", data.userId)
+        .order("detected_at", { ascending: false })
+        .limit(20),
     ]);
 
     return {
@@ -127,7 +180,13 @@ export const adminUserActivity = createServerFn({ method: "POST" })
 
 export const adminUpdateUser = createServerFn({ method: "POST" })
   .inputValidator(
-    (d: { token: string; userId: string; suspended?: boolean; balance?: number; suspendReason?: string }) =>
+    (d: {
+      token: string;
+      userId: string;
+      suspended?: boolean;
+      balance?: number;
+      suspendReason?: string;
+    }) =>
       z
         .object({
           token: z.string(),
@@ -136,7 +195,7 @@ export const adminUpdateUser = createServerFn({ method: "POST" })
           balance: z.number().optional(),
           suspendReason: z.string().optional(),
         })
-        .parse(d)
+        .parse(d),
   )
   .handler(async ({ data }) => {
     const { sb } = await requireAdmin(data.token);
@@ -172,7 +231,7 @@ export const adminUpsertTask = createServerFn({ method: "POST" })
         sort_order: z.number().default(0),
         active: z.boolean().default(true),
       })
-      .parse(d)
+      .parse(d),
   )
   .handler(async ({ data }) => {
     const { sb } = await requireAdmin(data.token);
@@ -184,7 +243,7 @@ export const adminUpsertTask = createServerFn({ method: "POST" })
 
 export const adminDeleteTask = createServerFn({ method: "POST" })
   .inputValidator((d: { token: string; id: string }) =>
-    z.object({ token: z.string(), id: z.string().uuid() }).parse(d)
+    z.object({ token: z.string(), id: z.string().uuid() }).parse(d),
   )
   .handler(async ({ data }) => {
     const { sb } = await requireAdmin(data.token);
@@ -199,7 +258,9 @@ export const adminListSubmissions = createServerFn({ method: "POST" })
     const { sb } = await requireAdmin(data.token);
     const { data: list } = await sb
       .from("task_completions")
-      .select("*, task:task_id(title, amount, type), user:user_id(telegram_id, username, first_name, balance, total_earned, total_tasks)")
+      .select(
+        "*, task:task_id(title, amount, type), user:user_id(telegram_id, username, first_name, balance, total_earned, total_tasks)",
+      )
       .eq("status", "pending")
       .order("created_at", { ascending: true });
     return { items: list || [] };
@@ -207,12 +268,14 @@ export const adminListSubmissions = createServerFn({ method: "POST" })
 
 export const adminReviewSubmission = createServerFn({ method: "POST" })
   .inputValidator((d: { token: string; id: string; approve: boolean; reason?: string }) =>
-    z.object({
-      token: z.string(),
-      id: z.string().uuid(),
-      approve: z.boolean(),
-      reason: z.string().optional(),
-    }).parse(d)
+    z
+      .object({
+        token: z.string(),
+        id: z.string().uuid(),
+        approve: z.boolean(),
+        reason: z.string().optional(),
+      })
+      .parse(d),
   )
   .handler(async ({ data }) => {
     const { sb } = await requireAdmin(data.token);
@@ -225,15 +288,21 @@ export const adminReviewSubmission = createServerFn({ method: "POST" })
     if (data.approve) {
       const amt = Number((comp as any).task.amount);
       const u = (comp as any).user;
-      await sb.from("task_completions").update({
-        status: "approved",
-        reviewed_at: new Date().toISOString(),
-      }).eq("id", data.id);
-      await sb.from("app_users").update({
-        balance: Number(u.balance) + amt,
-        total_earned: Number(u.total_earned) + amt,
-        total_tasks: u.total_tasks + 1,
-      }).eq("id", u.id);
+      await sb
+        .from("task_completions")
+        .update({
+          status: "approved",
+          reviewed_at: new Date().toISOString(),
+        })
+        .eq("id", data.id);
+      await sb
+        .from("app_users")
+        .update({
+          balance: Number(u.balance) + amt,
+          total_earned: Number(u.total_earned) + amt,
+          total_tasks: u.total_tasks + 1,
+        })
+        .eq("id", u.id);
       try {
         await tgApi("sendMessage", {
           chat_id: u.telegram_id,
@@ -243,11 +312,14 @@ export const adminReviewSubmission = createServerFn({ method: "POST" })
         });
       } catch {}
     } else {
-      await sb.from("task_completions").update({
-        status: "rejected",
-        reviewed_at: new Date().toISOString(),
-        reject_reason: data.reason || "Not valid",
-      }).eq("id", data.id);
+      await sb
+        .from("task_completions")
+        .update({
+          status: "rejected",
+          reviewed_at: new Date().toISOString(),
+          reject_reason: data.reason || "Not valid",
+        })
+        .eq("id", data.id);
       try {
         await tgApi("sendMessage", {
           chat_id: (comp as any).user.telegram_id,
@@ -262,11 +334,12 @@ export const adminReviewSubmission = createServerFn({ method: "POST" })
 // === Withdrawals ===
 export const adminListWithdrawals = createServerFn({ method: "POST" })
   .inputValidator((d: { token: string; status?: string }) =>
-    z.object({ token: z.string(), status: z.string().optional() }).parse(d)
+    z.object({ token: z.string(), status: z.string().optional() }).parse(d),
   )
   .handler(async ({ data }) => {
     const { sb } = await requireAdmin(data.token);
-    let q = sb.from("withdrawals")
+    let q = sb
+      .from("withdrawals")
       .select("*, user:user_id(telegram_id, username, first_name, total_ref_count, total_withdraw)")
       .order("created_at", { ascending: false });
     if (data.status) q = q.eq("status", data.status);
@@ -275,14 +348,17 @@ export const adminListWithdrawals = createServerFn({ method: "POST" })
   });
 
 export const adminReviewWithdraw = createServerFn({ method: "POST" })
-  .inputValidator((d: { token: string; id: string; approve: boolean; txId?: string; reason?: string }) =>
-    z.object({
-      token: z.string(),
-      id: z.string().uuid(),
-      approve: z.boolean(),
-      txId: z.string().optional(),
-      reason: z.string().optional(),
-    }).parse(d)
+  .inputValidator(
+    (d: { token: string; id: string; approve: boolean; txId?: string; reason?: string }) =>
+      z
+        .object({
+          token: z.string(),
+          id: z.string().uuid(),
+          approve: z.boolean(),
+          txId: z.string().optional(),
+          reason: z.string().optional(),
+        })
+        .parse(d),
   )
   .handler(async ({ data }) => {
     const { sb } = await requireAdmin(data.token);
@@ -293,18 +369,28 @@ export const adminReviewWithdraw = createServerFn({ method: "POST" })
       .single();
     if (!wd) throw new Error("Not found");
     const u = (wd as any).user;
-    const { data: settings } = await sb.from("app_settings").select("*").eq("key", "payment_channel").maybeSingle();
+    const { data: settings } = await sb
+      .from("app_settings")
+      .select("*")
+      .eq("key", "payment_channel")
+      .maybeSingle();
     const paymentChannel = (settings?.value as string) || "@rosepayfipayment";
     if (data.approve) {
       if (!data.txId) throw new Error("TX ID required");
-      await sb.from("withdrawals").update({
-        status: "approved",
-        tx_id: data.txId,
-        reviewed_at: new Date().toISOString(),
-      }).eq("id", data.id);
-      await sb.from("app_users").update({
-        total_withdraw: Number(u.total_withdraw) + Number(wd.amount),
-      }).eq("id", u.id);
+      await sb
+        .from("withdrawals")
+        .update({
+          status: "approved",
+          tx_id: data.txId,
+          reviewed_at: new Date().toISOString(),
+        })
+        .eq("id", data.id);
+      await sb
+        .from("app_users")
+        .update({
+          total_withdraw: Number(u.total_withdraw) + Number(wd.amount),
+        })
+        .eq("id", u.id);
       try {
         await tgApi("sendMessage", {
           chat_id: paymentChannel,
@@ -312,7 +398,12 @@ export const adminReviewWithdraw = createServerFn({ method: "POST" })
           parse_mode: "HTML",
           reply_markup: {
             inline_keyboard: [
-              [{ text: "🔍 View Transaction", url: `https://www.oasisscan.com/transactions/${data.txId}` }],
+              [
+                {
+                  text: "🔍 View Transaction",
+                  url: `https://www.oasisscan.com/transactions/${data.txId}`,
+                },
+              ],
               [{ text: "🚀 Open RosePayFi", url: "https://t.me/RosePayFibot?startapp=open" }],
             ],
           },
@@ -327,14 +418,20 @@ export const adminReviewWithdraw = createServerFn({ method: "POST" })
         });
       } catch {}
     } else {
-      await sb.from("withdrawals").update({
-        status: "rejected",
-        reject_reason: data.reason || "Rejected",
-        reviewed_at: new Date().toISOString(),
-      }).eq("id", data.id);
-      await sb.from("app_users").update({
-        balance: Number(u.balance) + Number(wd.amount),
-      }).eq("id", u.id);
+      await sb
+        .from("withdrawals")
+        .update({
+          status: "rejected",
+          reject_reason: data.reason || "Rejected",
+          reviewed_at: new Date().toISOString(),
+        })
+        .eq("id", data.id);
+      await sb
+        .from("app_users")
+        .update({
+          balance: Number(u.balance) + Number(wd.amount),
+        })
+        .eq("id", u.id);
       try {
         await tgApi("sendMessage", {
           chat_id: u.telegram_id,
@@ -351,20 +448,25 @@ export const adminListCodes = createServerFn({ method: "POST" })
   .inputValidator((d: { token: string }) => z.object({ token: z.string() }).parse(d))
   .handler(async ({ data }) => {
     const { sb } = await requireAdmin(data.token);
-    const { data: list } = await sb.from("reward_codes").select("*").order("created_at", { ascending: false });
+    const { data: list } = await sb
+      .from("reward_codes")
+      .select("*")
+      .order("created_at", { ascending: false });
     return { codes: list || [] };
   });
 
 export const adminUpsertCode = createServerFn({ method: "POST" })
   .inputValidator((d: any) =>
-    z.object({
-      token: z.string(),
-      id: z.string().uuid().optional(),
-      code: z.string().min(2).max(64),
-      amount: z.number().positive(),
-      max_uses: z.number().int().positive(),
-      active: z.boolean().default(true),
-    }).parse(d)
+    z
+      .object({
+        token: z.string(),
+        id: z.string().uuid().optional(),
+        code: z.string().min(2).max(64),
+        amount: z.number().positive(),
+        max_uses: z.number().int().positive(),
+        active: z.boolean().default(true),
+      })
+      .parse(d),
   )
   .handler(async ({ data }) => {
     const { sb } = await requireAdmin(data.token);
@@ -377,7 +479,7 @@ export const adminUpsertCode = createServerFn({ method: "POST" })
 
 export const adminDeleteCode = createServerFn({ method: "POST" })
   .inputValidator((d: { token: string; id: string }) =>
-    z.object({ token: z.string(), id: z.string().uuid() }).parse(d)
+    z.object({ token: z.string(), id: z.string().uuid() }).parse(d),
   )
   .handler(async ({ data }) => {
     const { sb } = await requireAdmin(data.token);
@@ -398,32 +500,39 @@ export const adminGetSettings = createServerFn({ method: "POST" })
 
 export const adminSetSetting = createServerFn({ method: "POST" })
   .inputValidator((d: { token: string; key: string; value: any }) =>
-    z.object({ token: z.string(), key: z.string().min(1), value: z.any() }).parse(d)
+    z.object({ token: z.string(), key: z.string().min(1), value: z.any() }).parse(d),
   )
   .handler(async ({ data }) => {
     const { sb } = await requireAdmin(data.token);
-    await sb.from("app_settings").upsert(
-      { key: data.key, value: data.value, updated_at: new Date().toISOString() },
-      { onConflict: "key" }
-    );
+    await sb
+      .from("app_settings")
+      .upsert(
+        { key: data.key, value: data.value, updated_at: new Date().toISOString() },
+        { onConflict: "key" },
+      );
     return { ok: true };
   });
 
 // === Broadcast ===
 export const adminBroadcast = createServerFn({ method: "POST" })
   .inputValidator((d: { token: string; message: string; toChannel: boolean; toUsers: boolean }) =>
-    z.object({
-      token: z.string(),
-      message: z.string().min(1).max(4000),
-      toChannel: z.boolean(),
-      toUsers: z.boolean(),
-    }).parse(d)
+    z
+      .object({
+        token: z.string(),
+        message: z.string().min(1).max(4000),
+        toChannel: z.boolean(),
+        toUsers: z.boolean(),
+      })
+      .parse(d),
   )
   .handler(async ({ data }) => {
     const { sb } = await requireAdmin(data.token);
     let sent = 0;
     let failed = 0;
-    const { data: settings } = await sb.from("app_settings").select("key, value").in("key", ["community_channel"]);
+    const { data: settings } = await sb
+      .from("app_settings")
+      .select("key, value")
+      .in("key", ["community_channel"]);
     const map: Record<string, any> = {};
     (settings || []).forEach((r: any) => (map[r.key] = r.value));
     const community = String(map.community_channel || "@rosepayfi");

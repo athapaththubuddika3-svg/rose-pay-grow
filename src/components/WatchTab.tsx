@@ -6,7 +6,12 @@ import { toast } from "sonner";
 import { useTelegram } from "./TelegramProvider";
 import { useAdsgram } from "./AdsgramProvider";
 import { RoseCoin } from "./RoseCoin";
-import { getEarnStats, completeAdWatch, completeAdTask, claimDailyBonus } from "@/lib/api.functions";
+import {
+  getEarnStats,
+  completeAdWatch,
+  completeAdTask,
+  claimDailyBonus,
+} from "@/lib/api.functions";
 
 function fmtMs(ms: number) {
   if (ms <= 0) return "ready";
@@ -43,7 +48,9 @@ export function WatchTab() {
 
   useEffect(() => {
     if (tg.ready && tg.initData) reload();
-    const i = setInterval(() => { if (tg.ready) reload(); }, 30000);
+    const i = setInterval(() => {
+      if (tg.ready) reload();
+    }, 30000);
     return () => clearInterval(i);
   }, [tg.ready, tg.initData]);
 
@@ -60,7 +67,9 @@ export function WatchTab() {
     try {
       const r = await ads.showRewarded(s.ads.blockId);
       if (!r.ok) throw new Error(r.error || "Watch the full ad to earn");
-      const res = await watch({ data: { initData: tg.initData, durationSec: r.durationSec, blockId: s.ads.blockId } });
+      const res = await watch({
+        data: { initData: tg.initData, durationSec: r.durationSec, blockId: s.ads.blockId },
+      });
       if (!res.ok) throw new Error(res.message || "Limit reached");
       tg.haptic("success");
       toast.success(`🌹 +${res.amount} ROSE!`);
@@ -68,7 +77,9 @@ export function WatchTab() {
     } catch (e: any) {
       tg.haptic("error");
       toast.error(e.message);
-    } finally { setBusy(null); }
+    } finally {
+      setBusy(null);
+    }
   };
 
   const handleTask = async () => {
@@ -77,7 +88,9 @@ export function WatchTab() {
     try {
       const r = await ads.showTask(s.adTask.blockId);
       if (!r.ok) throw new Error(r.error || "Complete the ad task to earn");
-      const res = await adTask({ data: { initData: tg.initData, durationSec: r.durationSec, blockId: s.adTask.blockId } });
+      const res = await adTask({
+        data: { initData: tg.initData, durationSec: r.durationSec, blockId: s.adTask.blockId },
+      });
       if (!res.ok) throw new Error("Ad task failed");
       tg.haptic("success");
       toast.success(`🌹 +${res.amount} ROSE!`);
@@ -85,7 +98,9 @@ export function WatchTab() {
     } catch (e: any) {
       tg.haptic("error");
       toast.error(e.message);
-    } finally { setBusy(null); }
+    } finally {
+      setBusy(null);
+    }
   };
 
   const handleBonus = async () => {
@@ -100,7 +115,9 @@ export function WatchTab() {
     } catch (e: any) {
       tg.haptic("error");
       toast.error(e.message);
-    } finally { setBusy(null); }
+    } finally {
+      setBusy(null);
+    }
   };
 
   const dailyPct = Math.min(100, (s.ads.dailyCount / s.ads.dailyLimit) * 100);
@@ -111,7 +128,8 @@ export function WatchTab() {
     <div className="px-4 pt-4 pb-28 space-y-4">
       <h2 className="text-xl font-bold neon-text-pink">Watch & Earn</h2>
       <p className="text-xs text-muted-foreground glass rounded-xl p-3">
-        Watch the full ad for at least {s.adTask.minWatchSec}s on Ad Tasks and the full rewarded ad to receive ROSE. Leaving early will show an error and no reward is given.
+        Watch the full ad for at least {s.adTask.minWatchSec}s on Ad Tasks and the full rewarded ad
+        to receive ROSE. Leaving early will show an error and no reward is given.
       </p>
 
       {/* Daily Bonus */}
@@ -136,7 +154,15 @@ export function WatchTab() {
             onClick={handleBonus}
             className="px-4 py-2 rounded-xl gradient-gold text-white text-sm font-bold disabled:opacity-50 flex items-center gap-1"
           >
-            {busy === "bonus" ? <Loader2 className="w-4 h-4 animate-spin" /> : s.bonus.ready ? "Claim" : <><Clock className="w-3 h-3" /> {fmtMs(s.bonus.remainMs)}</>}
+            {busy === "bonus" ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : s.bonus.ready ? (
+              "Claim"
+            ) : (
+              <>
+                <Clock className="w-3 h-3" /> {fmtMs(s.bonus.remainMs)}
+              </>
+            )}
           </button>
         </div>
       </motion.div>
@@ -161,23 +187,51 @@ export function WatchTab() {
           </div>
         </div>
         <button
-          disabled={busy === "ad" || s.ads.sessionRemainMs > 0 || s.ads.dailyCount >= s.ads.dailyLimit}
+          disabled={
+            busy === "ad" || s.ads.sessionRemainMs > 0 || s.ads.dailyCount >= s.ads.dailyLimit
+          }
           onClick={handleWatch}
           className="w-full mt-4 py-3 rounded-xl gradient-pink text-white font-bold disabled:opacity-50 flex items-center justify-center gap-2 relative"
         >
-          {busy === "ad" ? <Loader2 className="w-4 h-4 animate-spin" /> : s.ads.sessionRemainMs > 0 ? `Cooldown ${fmtMs(s.ads.sessionRemainMs)}` : s.ads.dailyCount >= s.ads.dailyLimit ? "Daily limit reached" : "▶ Watch Ad"}
+          {busy === "ad" ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : s.ads.sessionRemainMs > 0 ? (
+            `Cooldown ${fmtMs(s.ads.sessionRemainMs)}`
+          ) : s.ads.dailyCount >= s.ads.dailyLimit ? (
+            "Daily limit reached"
+          ) : (
+            "▶ Watch Ad"
+          )}
         </button>
         <div className="mt-3 space-y-2 text-xs relative">
           <div>
-            <div className="flex justify-between mb-1"><span className="text-muted-foreground">Daily</span><span>{s.ads.dailyCount}/{s.ads.dailyLimit}</span></div>
+            <div className="flex justify-between mb-1">
+              <span className="text-muted-foreground">Daily</span>
+              <span>
+                {s.ads.dailyCount}/{s.ads.dailyLimit}
+              </span>
+            </div>
             <div className="h-1.5 bg-input rounded-full overflow-hidden">
-              <motion.div className="h-full gradient-pink" initial={{ width: 0 }} animate={{ width: `${dailyPct}%` }} />
+              <motion.div
+                className="h-full gradient-pink"
+                initial={{ width: 0 }}
+                animate={{ width: `${dailyPct}%` }}
+              />
             </div>
           </div>
           <div>
-            <div className="flex justify-between mb-1"><span className="text-muted-foreground">Session</span><span>{s.ads.sessionCount}/{s.ads.sessionLimit}</span></div>
+            <div className="flex justify-between mb-1">
+              <span className="text-muted-foreground">Session</span>
+              <span>
+                {s.ads.sessionCount}/{s.ads.sessionLimit}
+              </span>
+            </div>
             <div className="h-1.5 bg-input rounded-full overflow-hidden">
-              <motion.div className="h-full gradient-purple" initial={{ width: 0 }} animate={{ width: `${sessionPct}%` }} />
+              <motion.div
+                className="h-full gradient-purple"
+                initial={{ width: 0 }}
+                animate={{ width: `${sessionPct}%` }}
+              />
             </div>
           </div>
         </div>
@@ -198,21 +252,41 @@ export function WatchTab() {
           <div className="flex-1">
             <p className="font-semibold">Ad Task</p>
             <div className="flex items-center gap-1 text-xs">
-              <RoseCoin size={12} /> <span className="text-rose-gold">+{s.adTask.reward} per task</span>
+              <RoseCoin size={12} />{" "}
+              <span className="text-rose-gold">+{s.adTask.reward} per task</span>
             </div>
           </div>
           <button
-            disabled={busy === "task" || s.adTask.cooldownRemainMs > 0 || s.adTask.count >= s.adTask.limit}
+            disabled={
+              busy === "task" || s.adTask.cooldownRemainMs > 0 || s.adTask.count >= s.adTask.limit
+            }
             onClick={handleTask}
             className="px-4 py-2 rounded-xl gradient-cyan text-white text-sm font-bold disabled:opacity-50 flex items-center gap-1"
           >
-            {busy === "task" ? <Loader2 className="w-4 h-4 animate-spin" /> : s.adTask.cooldownRemainMs > 0 ? fmtMs(s.adTask.cooldownRemainMs) : s.adTask.count >= s.adTask.limit ? "Done" : "Start Task Ad"}
+            {busy === "task" ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : s.adTask.cooldownRemainMs > 0 ? (
+              fmtMs(s.adTask.cooldownRemainMs)
+            ) : s.adTask.count >= s.adTask.limit ? (
+              "Done"
+            ) : (
+              "Start Task Ad"
+            )}
           </button>
         </div>
         <div className="mt-3 text-xs relative">
-          <div className="flex justify-between mb-1"><span className="text-muted-foreground">Today</span><span>{s.adTask.count}/{s.adTask.limit}</span></div>
+          <div className="flex justify-between mb-1">
+            <span className="text-muted-foreground">Today</span>
+            <span>
+              {s.adTask.count}/{s.adTask.limit}
+            </span>
+          </div>
           <div className="h-1.5 bg-input rounded-full overflow-hidden">
-            <motion.div className="h-full gradient-cyan" initial={{ width: 0 }} animate={{ width: `${taskPct}%` }} />
+            <motion.div
+              className="h-full gradient-cyan"
+              initial={{ width: 0 }}
+              animate={{ width: `${taskPct}%` }}
+            />
           </div>
           <p className="text-muted-foreground mt-2">Task ad block: {s.adTask.blockId}</p>
         </div>
@@ -222,9 +296,13 @@ export function WatchTab() {
       <div className="glass rounded-xl p-3 text-xs flex items-center justify-between">
         <div>
           <p className="font-semibold">Withdraw gate</p>
-          <p className="text-muted-foreground">Watch {s.withdraw.adsRequired} ads before each withdraw</p>
+          <p className="text-muted-foreground">
+            Watch {s.withdraw.adsRequired} ads before each withdraw
+          </p>
         </div>
-        <span className="text-rose-gold font-bold">{s.withdraw.adsDone}/{s.withdraw.adsRequired}</span>
+        <span className="text-rose-gold font-bold">
+          {s.withdraw.adsDone}/{s.withdraw.adsRequired}
+        </span>
       </div>
     </div>
   );
