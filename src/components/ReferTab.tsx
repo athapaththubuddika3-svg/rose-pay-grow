@@ -67,8 +67,12 @@ export function ReferTab() {
       } catch {}
     }
     tg.haptic(ok ? "success" : "error");
-    if (ok) toast.success("Link copied!");
-    else toast.error("Copy failed — long-press the link to copy");
+    if (ok) {
+      toast.success("Link copied!");
+      tg.showPopup("Referral Link Copied", "Your referral link is ready to paste and share.");
+    } else {
+      toast.error("Copy failed — long-press the link to copy");
+    }
   };
 
   const share = () => {
