@@ -620,15 +620,26 @@ export const recordAutoAd = createServerFn({ method: "POST" })
 
 // === Ad Task: complete + claim ===
 export const completeAdTask = createServerFn({ method: "POST" })
-  .inputValidator((d: { initData: string }) => z.object({ initData: z.string() }).parse(d))
+  .inputValidator((d: { initData: string; durationSec?: number; blockId?: string }) =>
+    z.object({
+      initData: z.string(),
+      durationSec: z.number().int().min(0).max(600).optional(),
+      blockId: z.string().min(1).max(64).optional(),
+    }).parse(d)
+  )
   .handler(async ({ data }) => {
     const { sb, user } = await authUser(data.initData);
     if (user.suspended) throw new Error("Account suspended");
     await balanceAudit(sb, user);
     const settings = await getSettings(sb);
+    const minWatch = Number(settings.ad_min_watch_task || settings.ad_min_watch_rew || 33);
     const reward = Number(settings.ad_task_reward || 0.02);
     const limit = Number(settings.ad_task_daily_limit || 15);
     const cooldownSec = Number(settings.ad_task_cooldown_sec || 10);
+
+    if (typeof data.durationSec === "number" && data.durationSec < minWatch) {
+      throw new Error(`Task ad not watched fully — watch at least ${minWatch} seconds.`);
+    }
 
     const now = new Date();
     let count = user.daily_ad_tasks_count || 0;
@@ -650,6 +661,15 @@ export const completeAdTask = createServerFn({ method: "POST" })
     }
 
     await sb.from("ad_task_completions").insert({ user_id: user.id, reward });
+    if (data.blockId && typeof data.durationSec === "number") {
+      await sb.from("ad_watches").insert({
+        user_id: user.id,
+        kind: "task",
+        block_id: data.blockId,
+        duration_sec: data.durationSec,
+        reward,
+      });
+    }
     await sb
       .from("app_users")
       .update({
@@ -684,6 +704,7 @@ export const getReferralData = createServerFn({ method: "POST" })
       refCommissionPct: settings.ref_commission_pct || 10,
       shareImage: settings.app_share_image || "https://rose-pay-grow.lovable.app/rosepayfi-share.jpg",
       shareText: settings.app_share_text || "🌹 Join RosePayFi and earn ROSE inside Telegram!",
+      antiCheatNote: "Multiple accounts from the same IP will be auto-suspended and referral rewards will be blocked.",
     };
   });
 
@@ -761,7 +782,11 @@ export const requestWithdraw = createServerFn({ method: "POST" })
     if (data.amount > Number(user.balance)) throw new Error("Insufficient balance");
     if (user.total_ref_count < minRefs)
       throw new Error(`Need at least ${minRefs} referrals`);
-    if (user.total_ads < minAds) throw new Error(`Need at least ${minAds} ads watched today`);
+    const dailyResetAt = user.daily_ads_reset_at ? new Date(user.daily_ads_reset_at) : new Date(0);
+    const lastDay = Date.UTC(dailyResetAt.getUTCFullYear(), dailyResetAt.getUTCMonth(), dailyResetAt.getUTCDate());
+    const todayUtc = Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate());
+    const todayAdCount = todayUtc > lastDay ? 0 : Number(user.daily_ads_count || 0);
+    if (todayAdCount < minAds) throw new Error(`Need at least ${minAds} ads watched today`);
     if ((user.withdraw_ads_done || 0) < adsRequired)
       throw new Error(`Watch ${adsRequired} ads before withdrawing`);
 
@@ -822,7 +847,14 @@ export const requestWithdraw = createServerFn({ method: "POST" })
         reply_markup: appKeyboard(),
       });
     } catch {}
-    return { ok: true, withdrawal: wd, fee, net };
+    return {
+      ok: true,
+      withdrawal: wd,
+      fee,
+      net,
+      gross: data.amount,
+      successMessage: `Withdrawal request success. Net payout ${net.toFixed(2)} ROSE will arrive within 24 hours.`,
+    };
   });
 
 // === Withdraw history ===
@@ -918,7 +950,8 @@ export const getEarnStats = createServerFn({ method: "POST" })
         limit: Number(settings.ad_task_daily_limit || 15),
         cooldownRemainMs,
         reward: Number(settings.ad_task_reward || 0.02),
-        blockId: String(settings.ad_task_block || "30049"),
+        blockId: String(settings.ad_task_block || "task-30049"),
+        minWatchSec: Number(settings.ad_min_watch_task || settings.ad_min_watch_rew || 33),
       },
       bonus: {
         ready: bonusReady,
