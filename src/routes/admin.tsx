@@ -4,7 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { toast, Toaster } from "sonner";
 import {
   adminLogin, adminMe, adminStats,
-  adminListUsers, adminUpdateUser,
+  adminListUsers, adminUpdateUser, adminUserActivity,
   adminListTasks, adminUpsertTask, adminDeleteTask,
   adminListSubmissions, adminReviewSubmission,
   adminListWithdrawals, adminReviewWithdraw,
@@ -160,10 +160,20 @@ function StatsView({ token }: { token: string }) {
 function UsersView({ token }: { token: string }) {
   const list = useServerFn(adminListUsers);
   const upd = useServerFn(adminUpdateUser);
+  const userActivity = useServerFn(adminUserActivity);
   const [users, setUsers] = useState<any[]>([]);
   const [search, setSearch] = useState("");
+  const [selected, setSelected] = useState<any>(null);
+  const [activity, setActivity] = useState<any>(null);
   const reload = () => list({ data: { token, search: search || undefined } }).then(r => setUsers(r.users));
   useEffect(() => { reload(); }, [token]);
+
+  const openUser = async (user: any) => {
+    setSelected(user);
+    setActivity(null);
+    const res = await userActivity({ data: { token, userId: user.id } });
+    setActivity(res.activity);
+  };
 
   return (
     <div>
@@ -186,7 +196,11 @@ function UsersView({ token }: { token: string }) {
           <tbody>
             {users.map(u => (
               <tr key={u.id} className="border-t border-slate-800">
-                <td className="p-2">@{u.username || u.first_name}</td>
+                <td className="p-2">
+                  <button onClick={() => openUser(u)} className="text-left hover:text-pink-300">
+                    @{u.username || u.first_name}
+                  </button>
+                </td>
                 <td className="p-2 text-xs">{u.telegram_id}</td>
                 <td className="p-2">{Number(u.balance).toFixed(2)}</td>
                 <td className="p-2">{Number(u.total_earned).toFixed(2)}</td>
@@ -209,6 +223,46 @@ function UsersView({ token }: { token: string }) {
             ))}
           </tbody>
         </table>
+      </div>
+
+      {selected && (
+        <div className="fixed inset-0 bg-black/75 z-50 p-4 overflow-y-auto" onClick={() => setSelected(null)}>
+          <div className="max-w-3xl mx-auto bg-slate-900 border border-slate-700 rounded-2xl p-4 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-xl font-bold">@{selected.username || selected.first_name}</h3>
+                <p className="text-xs text-slate-400">TG: {selected.telegram_id} · IP: {selected.ip_address || "-"}</p>
+                <p className="text-xs mt-1 {selected.suspended ? 'text-red-300' : 'text-green-300'}">{selected.suspended ? `Suspended: ${selected.suspend_reason || 'No reason'}` : 'Active'}</p>
+              </div>
+              <button onClick={() => setSelected(null)} className="text-slate-400">Close</button>
+            </div>
+            {!activity ? <p className="text-sm text-slate-400">Loading activity…</p> : (
+              <div className="grid md:grid-cols-2 gap-4 text-sm">
+                <Panel title="Ad Watches" items={activity.adWatches} render={(item:any) => `${item.kind} · ${item.duration_sec}s · ${item.reward} ROSE`} />
+                <Panel title="Ad Tasks" items={activity.adTasks} render={(item:any) => `${item.reward} ROSE · ${new Date(item.completed_at).toLocaleString()}`} />
+                <Panel title="Tasks" items={activity.tasks} render={(item:any) => `${item.task?.title || 'Task'} · ${item.status}`} />
+                <Panel title="Withdrawals" items={activity.withdrawals} render={(item:any) => `${item.amount} ROSE · ${item.status}`} />
+                <Panel title="Referrals" items={activity.referrals} render={(item:any) => `${item.status} · referrer ${item.referrer?.telegram_id || '-'} · referred ${item.referred?.telegram_id || '-'}`} />
+                <Panel title="Reward Codes / Audits" items={[...(activity.rewardCodes || []), ...(activity.balanceAudits || [])]} render={(item:any) => item.code_id ? `${item.reward_code?.code || 'CODE'} · ${item.amount} ROSE` : `Audit diff ${item.diff}`} />
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Panel({ title, items, render }: { title: string; items: any[]; render: (item: any) => string }) {
+  return (
+    <div className="bg-slate-950 border border-slate-800 rounded-xl p-3">
+      <h4 className="font-semibold mb-2">{title}</h4>
+      <div className="space-y-2 max-h-64 overflow-auto">
+        {items?.length ? items.map((item, index) => (
+          <div key={item.id || index} className="text-xs text-slate-300 border border-slate-800 rounded-lg p-2">
+            {render(item)}
+          </div>
+        )) : <p className="text-xs text-slate-500">No activity</p>}
       </div>
     </div>
   );
