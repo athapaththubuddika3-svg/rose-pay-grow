@@ -10,6 +10,8 @@ declare global {
         expand: () => void;
         openTelegramLink: (url: string) => void;
         openLink: (url: string) => void;
+        shareToStory?: (media_url: string, params?: any) => void;
+        showPopup?: (params: any, cb?: (buttonId: string) => void) => void;
         HapticFeedback?: { impactOccurred: (s: string) => void; notificationOccurred: (s: string) => void };
         themeParams?: any;
         colorScheme?: string;
@@ -35,6 +37,7 @@ interface Ctx {
   isInTelegram: boolean;
   openLink: (url: string) => void;
   openTelegramLink: (url: string) => void;
+  showPopup: (title: string, message: string) => void;
   haptic: (type?: "light" | "medium" | "heavy" | "success" | "error") => void;
 }
 
@@ -49,6 +52,7 @@ export function TelegramProvider({ children }: { children: ReactNode }) {
     isInTelegram: false,
     openLink: () => {},
     openTelegramLink: () => {},
+    showPopup: () => {},
     haptic: () => {},
   });
 
@@ -85,6 +89,15 @@ export function TelegramProvider({ children }: { children: ReactNode }) {
           openLink: (url: string) => (tg.openLink ? tg.openLink(url) : window.open(url, "_blank")),
           openTelegramLink: (url: string) =>
             tg.openTelegramLink ? tg.openTelegramLink(url) : window.open(url, "_blank"),
+          showPopup: (title: string, message: string) => {
+            try {
+              tg.showPopup?.({
+                title,
+                message,
+                buttons: [{ id: "ok", type: "default", text: "OK" }],
+              });
+            } catch {}
+          },
           haptic: (type = "light") => {
             try {
               if (type === "success" || type === "error") {
@@ -110,6 +123,7 @@ export function TelegramProvider({ children }: { children: ReactNode }) {
           isInTelegram: false,
           openLink: (url) => window.open(url, "_blank"),
           openTelegramLink: (url) => window.open(url, "_blank"),
+          showPopup: () => {},
           haptic: () => {},
         });
       }
