@@ -873,7 +873,7 @@ export const requestWithdraw = createServerFn({ method: "POST" })
     try {
       await tgApi("sendMessage", {
         chat_id: tg.id,
-        text: `⏳ <b>Withdrawal received</b>\nGross: ${data.amount} ROSE\nFee: ${fee} ROSE\nNet payout: <b>${net} ROSE</b>\n\nWe'll notify you once payment is sent.`,
+        text: `✅ <b>Withdrawal request success</b>\nGross: ${data.amount} ROSE\nFee: ${fee} ROSE\nNet payout: <b>${net} ROSE</b>\n\nYour withdrawal will be processed within 24 hours.`,
         parse_mode: "HTML",
         reply_markup: appKeyboard(),
       });
