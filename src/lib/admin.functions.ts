@@ -94,6 +94,37 @@ export const adminListUsers = createServerFn({ method: "POST" })
     return { users: list || [] };
   });
 
+export const adminUserActivity = createServerFn({ method: "POST" })
+  .inputValidator((d: { token: string; userId: string }) =>
+    z.object({ token: z.string(), userId: z.string().uuid() }).parse(d)
+  )
+  .handler(async ({ data }) => {
+    const { sb } = await requireAdmin(data.token);
+    const [{ data: user }, { data: adWatches }, { data: adTasks }, { data: tasks }, { data: withdrawals }, { data: referrals }, { data: codes }, { data: audit }] = await Promise.all([
+      sb.from("app_users").select("*").eq("id", data.userId).single(),
+      sb.from("ad_watches").select("*").eq("user_id", data.userId).order("watched_at", { ascending: false }).limit(50),
+      sb.from("ad_task_completions").select("*").eq("user_id", data.userId).order("completed_at", { ascending: false }).limit(50),
+      sb.from("task_completions").select("*, task:task_id(title, type, amount)").eq("user_id", data.userId).order("created_at", { ascending: false }).limit(50),
+      sb.from("withdrawals").select("*").eq("user_id", data.userId).order("created_at", { ascending: false }).limit(50),
+      sb.from("referrals").select("*, referred:referred_id(username, first_name, telegram_id), referrer:referrer_id(username, first_name, telegram_id)").or(`referrer_id.eq.${data.userId},referred_id.eq.${data.userId}`).order("created_at", { ascending: false }).limit(50),
+      sb.from("reward_code_claims").select("*, reward_code:code_id(code)").eq("user_id", data.userId).order("created_at", { ascending: false }).limit(50),
+      sb.from("balance_audits").select("*").eq("user_id", data.userId).order("detected_at", { ascending: false }).limit(20),
+    ]);
+
+    return {
+      user,
+      activity: {
+        adWatches: adWatches || [],
+        adTasks: adTasks || [],
+        tasks: tasks || [],
+        withdrawals: withdrawals || [],
+        referrals: referrals || [],
+        rewardCodes: codes || [],
+        balanceAudits: audit || [],
+      },
+    };
+  });
+
 export const adminUpdateUser = createServerFn({ method: "POST" })
   .inputValidator(
     (d: { token: string; userId: string; suspended?: boolean; balance?: number; suspendReason?: string }) =>
