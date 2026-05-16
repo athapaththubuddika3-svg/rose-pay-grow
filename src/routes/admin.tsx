@@ -232,7 +232,9 @@ function UsersView({ token }: { token: string }) {
               <div>
                 <h3 className="text-xl font-bold">@{selected.username || selected.first_name}</h3>
                 <p className="text-xs text-slate-400">TG: {selected.telegram_id} · IP: {selected.ip_address || "-"}</p>
-                <p className="text-xs mt-1 {selected.suspended ? 'text-red-300' : 'text-green-300'}">{selected.suspended ? `Suspended: ${selected.suspend_reason || 'No reason'}` : 'Active'}</p>
+                <p className={`text-xs mt-1 ${selected.suspended ? "text-red-300" : "text-green-300"}`}>
+                  {selected.suspended ? `Suspended: ${selected.suspend_reason || "No reason"}` : "Active"}
+                </p>
               </div>
               <button onClick={() => setSelected(null)} className="text-slate-400">Close</button>
             </div>
