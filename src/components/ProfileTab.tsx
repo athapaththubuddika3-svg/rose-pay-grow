@@ -58,6 +58,10 @@ export function ProfileTab() {
   const minRefs = Number(settings.min_refs_for_withdraw || 2);
   const minAds = Number(settings.min_daily_ads_for_withdraw || 10);
   const minWd = Number(settings.min_withdraw || 10);
+  const fee = Number(settings.withdraw_fee || 0.5);
+  const maxWd = Number(settings.max_withdraw || 10);
+  const amountNum = Number(amount || 0);
+  const netAmount = Math.max(0, amountNum - fee);
 
   const tryWithdraw = () => {
     if (u.total_ref_count < minRefs) return toast.error(`Need at least ${minRefs} referrals`);
@@ -75,7 +79,13 @@ export function ProfileTab() {
     try {
       await submit({ data: { initData: tg.initData, amount: a, address } });
       tg.haptic("success");
-      toast.success("Withdrawal requested!");
+      toast.success("Withdrawal request success", {
+        description: `Net payout ${Math.max(0, a - fee).toFixed(2)} ROSE will arrive within 24 hours.`,
+        action: {
+          label: "Open RosePayFi",
+          onClick: () => tg.openTelegramLink("https://t.me/RosePayFibot?startapp=open"),
+        },
+      });
       setShowWd(false);
       reload();
     } catch (e: any) {
@@ -137,8 +147,11 @@ export function ProfileTab() {
       <div className="text-xs text-muted-foreground glass rounded-xl p-3 space-y-1">
         <p>Requirements:</p>
         <p>• Min withdraw: {minWd} ROSE {Number(u.balance) >= minWd ? "✅" : "❌"}</p>
+        <p>• Max withdraw: {maxWd} ROSE</p>
+        <p>• Fee: {fee} ROSE</p>
         <p>• Min refs: {minRefs} ({u.total_ref_count}) {u.total_ref_count >= minRefs ? "✅" : "❌"}</p>
         <p>• Daily ads: {minAds} ({u.total_ads}) {u.total_ads >= minAds ? "✅" : "❌"}</p>
+        <p>• All Main + Partner tasks must be approved before withdraw</p>
       </div>
 
       {/* Withdraw modal */}
@@ -168,6 +181,11 @@ export function ProfileTab() {
                 >
                   MAX
                 </button>
+              </div>
+              <div className="mt-2 rounded-xl bg-input/40 px-3 py-2 text-xs text-muted-foreground space-y-1">
+                <div className="flex items-center justify-between"><span>Gross</span><span>{amountNum ? amountNum.toFixed(2) : "0.00"} ROSE</span></div>
+                <div className="flex items-center justify-between"><span>Fee</span><span>{fee.toFixed(2)} ROSE</span></div>
+                <div className="flex items-center justify-between text-rose-gold font-semibold"><span>Net payout</span><span>{netAmount.toFixed(2)} ROSE</span></div>
               </div>
             </div>
             <div>
