@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { motion } from "framer-motion";
 import { Play, Gift, Zap, Loader2, Clock } from "lucide-react";
@@ -34,6 +34,7 @@ export function WatchTab() {
   const [s, setS] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
+  const taskRef = useRef<HTMLElement | null>(null);
 
   const reload = async () => {
     try {
@@ -82,26 +83,33 @@ export function WatchTab() {
     }
   };
 
-  const handleTask = async () => {
-    if (busy) return;
-    setBusy("task");
-    try {
-      const r = await ads.showTask(s.adTask.blockId);
-      if (!r.ok) throw new Error(r.error || "Complete the ad task to earn");
-      const res = await adTask({
-        data: { initData: tg.initData, durationSec: r.durationSec, blockId: s.adTask.blockId },
-      });
-      if (!res.ok) throw new Error("Ad task failed");
-      tg.haptic("success");
-      toast.success(`🌹 +${res.amount} ROSE!`);
-      reload();
-    } catch (e: any) {
-      tg.haptic("error");
-      toast.error(e.message);
-    } finally {
-      setBusy(null);
-    }
-  };
+  useEffect(() => {
+    if (!ads.taskReady || !taskRef.current || !s?.adTask?.blockId) return;
+    const taskEl = taskRef.current;
+    const onReward = async () => {
+      if (busy) return;
+      setBusy("task");
+      try {
+        const res = await adTask({ data: { initData: tg.initData, blockId: s.adTask.blockId } });
+        if (!res.ok) throw new Error("Ad task failed");
+        tg.haptic("success");
+        toast.success(`🌹 +${res.amount} ROSE!`);
+        reload();
+      } catch (e: any) {
+        tg.haptic("error");
+        toast.error(e.message);
+      } finally {
+        setBusy(null);
+      }
+    };
+    const onError = () => toast.error("Ad task failed to load");
+    taskEl.addEventListener("reward", onReward as EventListener);
+    taskEl.addEventListener("onError", onError as EventListener);
+    return () => {
+      taskEl.removeEventListener("reward", onReward as EventListener);
+      taskEl.removeEventListener("onError", onError as EventListener);
+    };
+  }, [ads.taskReady, s?.adTask?.blockId, tg.initData, busy]);
 
   const handleBonus = async () => {
     if (busy) return;
@@ -128,8 +136,8 @@ export function WatchTab() {
     <div className="px-4 pt-4 pb-28 space-y-4">
       <h2 className="text-xl font-bold neon-text-pink">Watch & Earn</h2>
       <p className="text-xs text-muted-foreground glass rounded-xl p-3">
-        Watch the full ad for at least {s.adTask.minWatchSec}s on Ad Tasks and the full rewarded ad
-        to receive ROSE. Leaving early will show an error and no reward is given.
+        Watch ads fully to receive ROSE. During task ads, open the promoted bot or channel from the
+        ad and complete it until the reward unlocks.
       </p>
 
       {/* Daily Bonus */}
@@ -256,23 +264,38 @@ export function WatchTab() {
               <span className="text-rose-gold">+{s.adTask.reward} per task</span>
             </div>
           </div>
-          <button
-            disabled={
-              busy === "task" || s.adTask.cooldownRemainMs > 0 || s.adTask.count >= s.adTask.limit
-            }
-            onClick={handleTask}
-            className="px-4 py-2 rounded-xl gradient-cyan text-white text-sm font-bold disabled:opacity-50 flex items-center gap-1"
-          >
-            {busy === "task" ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : s.adTask.cooldownRemainMs > 0 ? (
-              fmtMs(s.adTask.cooldownRemainMs)
-            ) : s.adTask.count >= s.adTask.limit ? (
-              "Done"
+          <div className="flex flex-col items-end gap-2">
+            {s.adTask.cooldownRemainMs > 0 ? (
+              <span className="text-xs text-muted-foreground">
+                Cooldown {fmtMs(s.adTask.cooldownRemainMs)}
+              </span>
+            ) : null}
+            {s.adTask.count < s.adTask.limit && ads.taskReady ? (
+              <adsgram-task
+                ref={taskRef as any}
+                data-block-id={s.adTask.blockId}
+                data-debug="false"
+                className="block"
+              >
+                <div slot="reward" className="text-[11px] text-rose-gold font-semibold">
+                  +{s.adTask.reward} ROSE
+                </div>
+                <div slot="button" className="px-4 py-2 rounded-xl gradient-cyan text-white text-sm font-bold">
+                  Start Task Ad
+                </div>
+                <div slot="claim" className="px-4 py-2 rounded-xl gradient-cyan text-white text-sm font-bold">
+                  Claim Task Reward
+                </div>
+                <div slot="done" className="px-4 py-2 rounded-xl bg-emerald-500/20 text-emerald-300 text-sm font-bold">
+                  Done
+                </div>
+              </adsgram-task>
             ) : (
-              "Start Task Ad"
+              <button disabled className="px-4 py-2 rounded-xl gradient-cyan text-white text-sm font-bold disabled:opacity-50">
+                {s.adTask.count >= s.adTask.limit ? "Done" : "Loading task..."}
+              </button>
             )}
-          </button>
+          </div>
         </div>
         <div className="mt-3 text-xs relative">
           <div className="flex justify-between mb-1">
@@ -288,7 +311,14 @@ export function WatchTab() {
               animate={{ width: `${taskPct}%` }}
             />
           </div>
-          <p className="text-muted-foreground mt-2">Task ad block: {s.adTask.blockId}</p>
+          <div className="mt-2 flex gap-2 text-[11px]">
+            <button onClick={() => tg.openTelegramLink(s.adTask.ctaBotLink)} className="text-rose-cyan">
+              Open bot from ad
+            </button>
+            <button onClick={() => tg.openTelegramLink(s.adTask.ctaChannelLink)} className="text-rose-pink">
+              Open channel from ad
+            </button>
+          </div>
         </div>
       </motion.div>
 
