@@ -193,6 +193,27 @@ async function getRefCount(sb: any, userId: string): Promise<number> {
   return count || 0;
 }
 
+async function getVerifiedRefCount(sb: any, userId: string): Promise<number> {
+  const { count } = await sb
+    .from("referrals")
+    .select("*", { count: "exact", head: true })
+    .eq("referrer_id", userId)
+    .in("status", ["claimable", "claimed"]);
+  return count || 0;
+}
+
+async function getPendingWithdraw(sb: any, userId: string) {
+  const { data } = await sb
+    .from("withdrawals")
+    .select("id, amount, wallet_address, created_at, status")
+    .eq("user_id", userId)
+    .eq("status", "pending")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return data || null;
+}
+
 async function getSettings(sb: any) {
   const { data } = await sb.from("app_settings").select("*");
   const map: Record<string, any> = {};
@@ -246,6 +267,10 @@ export const getMe = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { sb, user } = await authUser(data.initData, data.startParam);
     const settings = await getSettings(sb);
+    const [verifiedRefCount, pendingWithdraw] = await Promise.all([
+      getVerifiedRefCount(sb, user.id),
+      getPendingWithdraw(sb, user.id),
+    ]);
     let price = 0;
     try {
       const r = await fetch(
@@ -269,7 +294,15 @@ export const getMe = createServerFn({ method: "POST" })
     }
     const override = Number(settings.rose_price_override || 0);
     if (override > 0) price = override;
-    return { user, settings, price };
+    return {
+      user,
+      settings,
+      price,
+      meta: {
+        verifiedRefCount,
+        pendingWithdraw,
+      },
+    };
   });
 
 // === Tasks list ===
@@ -717,9 +750,40 @@ export const getReferralData = createServerFn({ method: "POST" })
       .select("*, referred:referred_id(username, first_name, photo_url, telegram_id)")
       .eq("referrer_id", user.id)
       .order("created_at", { ascending: false });
+    const verifiedCount = await getVerifiedRefCount(sb, user.id);
+    const { data: requiredTasks } = await sb
+      .from("tasks")
+      .select("id")
+      .in("type", ["main", "partner"])
+      .eq("active", true);
+    const requiredIds = (requiredTasks || []).map((task: any) => task.id);
+    const referredIds = (refs || []).map((ref: any) => ref.referred_id).filter(Boolean);
+    const progressMap = new Map<string, number>();
+
+    if (requiredIds.length && referredIds.length) {
+      const { data: progressRows } = await sb
+        .from("task_completions")
+        .select("user_id, task_id")
+        .eq("status", "approved")
+        .in("user_id", referredIds)
+        .in("task_id", requiredIds);
+
+      for (const row of progressRows || []) {
+        progressMap.set(row.user_id, (progressMap.get(row.user_id) || 0) + 1);
+      }
+    }
+
+    const detailedRefs = (refs || []).map((ref: any) => ({
+      ...ref,
+      verified: ref.status === "claimable" || ref.status === "claimed",
+      doneTasks: progressMap.get(ref.referred_id) || 0,
+      requiredTasks: requiredIds.length,
+    }));
+
     return {
       user,
-      refs: refs || [],
+      refs: detailedRefs,
+      verifiedCount,
       botUsername: settings.bot_username || "RosePayFibot",
       refBonus: settings.ref_bonus || 1,
       refCommissionPct: settings.ref_commission_pct || 10,
@@ -800,11 +864,17 @@ export const requestWithdraw = createServerFn({ method: "POST" })
     const minRefs = Number(settings.min_refs_for_withdraw || 2);
     const minAds = Number(settings.min_daily_ads_for_withdraw || 10);
     const adsRequired = Number(settings.withdraw_ads_required || 2);
+    const [verifiedRefCount, pendingWithdraw] = await Promise.all([
+      getVerifiedRefCount(sb, user.id),
+      getPendingWithdraw(sb, user.id),
+    ]);
     if (data.amount < minWithdraw) throw new Error(`Minimum withdraw is ${minWithdraw} ROSE`);
     if (data.amount > maxWithdraw)
       throw new Error(`Maximum withdraw is ${maxWithdraw} ROSE per request`);
     if (data.amount > Number(user.balance)) throw new Error("Insufficient balance");
-    if (user.total_ref_count < minRefs) throw new Error(`Need at least ${minRefs} referrals`);
+    if (pendingWithdraw) throw new Error("You already have a pending withdrawal request");
+    if (verifiedRefCount < minRefs)
+      throw new Error(`Need at least ${minRefs} verified referrals before withdrawing`);
     const dailyResetAt = user.daily_ads_reset_at ? new Date(user.daily_ads_reset_at) : new Date(0);
     const lastDay = Date.UTC(
       dailyResetAt.getUTCFullYear(),
@@ -924,6 +994,7 @@ export const getEarnStats = createServerFn({ method: "POST" })
     const { sb, user } = await authUser(data.initData);
     const settings = await getSettings(sb);
     const now = new Date();
+    const pendingWithdraw = await getPendingWithdraw(sb, user.id);
 
     // Daily ads
     const dailyResetAt = user.daily_ads_reset_at ? new Date(user.daily_ads_reset_at) : new Date(0);
@@ -996,6 +1067,8 @@ export const getEarnStats = createServerFn({ method: "POST" })
         reward: Number(settings.ad_task_reward || 0.02),
         blockId: String(settings.ad_task_block || "task-30049"),
         minWatchSec: Number(settings.ad_min_watch_task || settings.ad_min_watch_rew || 33),
+        ctaBotLink: `https://t.me/${String(settings.bot_username || "RosePayFibot")}?startapp=open`,
+        ctaChannelLink: String(settings.community_channel || "https://t.me/rosepayfi"),
       },
       bonus: {
         ready: bonusReady,
@@ -1005,6 +1078,7 @@ export const getEarnStats = createServerFn({ method: "POST" })
       withdraw: {
         adsDone: user.withdraw_ads_done || 0,
         adsRequired: Number(settings.withdraw_ads_required || 2),
+        blockedByPending: !!pendingWithdraw,
       },
     };
   });

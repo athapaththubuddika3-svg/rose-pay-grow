@@ -515,13 +515,25 @@ export const adminSetSetting = createServerFn({ method: "POST" })
 
 // === Broadcast ===
 export const adminBroadcast = createServerFn({ method: "POST" })
-  .inputValidator((d: { token: string; message: string; toChannel: boolean; toUsers: boolean }) =>
+  .inputValidator(
+    (d: {
+      token: string;
+      message: string;
+      toChannel: boolean;
+      toUsers: boolean;
+      imageUrl?: string;
+      buttonText?: string;
+      buttonUrl?: string;
+    }) =>
     z
       .object({
         token: z.string(),
         message: z.string().min(1).max(4000),
         toChannel: z.boolean(),
         toUsers: z.boolean(),
+        imageUrl: z.string().url().optional().or(z.literal("")),
+        buttonText: z.string().max(64).optional().or(z.literal("")),
+        buttonUrl: z.string().url().optional().or(z.literal("")),
       })
       .parse(d),
   )
@@ -536,15 +548,33 @@ export const adminBroadcast = createServerFn({ method: "POST" })
     const map: Record<string, any> = {};
     (settings || []).forEach((r: any) => (map[r.key] = r.value));
     const community = String(map.community_channel || "@rosepayfi");
+    const replyMarkup = data.buttonText && data.buttonUrl
+      ? {
+          inline_keyboard: [[{ text: data.buttonText, url: data.buttonUrl }]],
+        }
+      : appKeyboard();
+
+    const send = async (chatId: string | number) => {
+      if (data.imageUrl) {
+        return tgApi("sendPhoto", {
+          chat_id: chatId,
+          photo: data.imageUrl,
+          caption: data.message,
+          parse_mode: "HTML",
+          reply_markup: replyMarkup,
+        });
+      }
+      return tgApi("sendMessage", {
+        chat_id: chatId,
+        text: data.message,
+        parse_mode: "HTML",
+        reply_markup: replyMarkup,
+      });
+    };
 
     if (data.toChannel) {
       try {
-        await tgApi("sendMessage", {
-          chat_id: community,
-          text: data.message,
-          parse_mode: "HTML",
-          reply_markup: appKeyboard(),
-        });
+        await send(community);
         sent++;
       } catch {
         failed++;
@@ -559,12 +589,7 @@ export const adminBroadcast = createServerFn({ method: "POST" })
         .eq("notif_enabled", true);
       for (const u of users || []) {
         try {
-          await tgApi("sendMessage", {
-            chat_id: u.telegram_id,
-            text: data.message,
-            parse_mode: "HTML",
-            reply_markup: appKeyboard(),
-          });
+          await send(u.telegram_id);
           sent++;
         } catch {
           failed++;

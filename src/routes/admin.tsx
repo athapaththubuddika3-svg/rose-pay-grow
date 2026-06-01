@@ -21,6 +21,7 @@ import {
   adminDeleteCode,
   adminGetSettings,
   adminSetSetting,
+  adminBroadcast,
 } from "@/lib/admin.functions";
 
 export const Route = createFileRoute("/admin")({
@@ -134,7 +135,15 @@ function Login({ onLogin }: { onLogin: (token: string) => void }) {
   );
 }
 
-type Tab = "dashboard" | "users" | "tasks" | "submissions" | "withdrawals" | "codes" | "settings";
+type Tab =
+  | "dashboard"
+  | "users"
+  | "tasks"
+  | "submissions"
+  | "withdrawals"
+  | "codes"
+  | "broadcast"
+  | "settings";
 
 function Dashboard({ token, onLogout }: { token: string; onLogout: () => void }) {
   const [tab, setTab] = useState<Tab>("dashboard");
@@ -145,6 +154,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
     { id: "submissions", label: "Submissions" },
     { id: "withdrawals", label: "Withdrawals" },
     { id: "codes", label: "Reward Codes" },
+    { id: "broadcast", label: "Broadcast" },
     { id: "settings", label: "Settings" },
   ];
   return (
@@ -178,6 +188,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
         {tab === "submissions" && <SubmissionsView token={token} />}
         {tab === "withdrawals" && <WithdrawalsView token={token} />}
         {tab === "codes" && <CodesView token={token} />}
+        {tab === "broadcast" && <BroadcastView token={token} />}
         {tab === "settings" && <SettingsView token={token} />}
       </main>
     </div>
@@ -856,6 +867,88 @@ function CodesView({ token }: { token: string }) {
           </form>
         </div>
       )}
+    </div>
+  );
+}
+
+function BroadcastView({ token }: { token: string }) {
+  const broadcast = useServerFn(adminBroadcast);
+  const [message, setMessage] = useState("");
+  const [imageUrl, setImageUrl] = useState("");
+  const [buttonText, setButtonText] = useState("Open RosePayFi");
+  const [buttonUrl, setButtonUrl] = useState("https://t.me/RosePayFibot?startapp=open");
+  const [toUsers, setToUsers] = useState(true);
+  const [toChannel, setToChannel] = useState(true);
+  const [sending, setSending] = useState(false);
+
+  return (
+    <div className="max-w-2xl space-y-4">
+      <h2 className="text-2xl font-bold">Broadcast</h2>
+      <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3">
+        <textarea
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          placeholder="HTML message"
+          className="w-full min-h-40 bg-slate-800 rounded-lg p-3 outline-none"
+        />
+        <input
+          value={imageUrl}
+          onChange={(e) => setImageUrl(e.target.value)}
+          placeholder="Image URL (optional)"
+          className="w-full bg-slate-800 rounded-lg p-3 outline-none"
+        />
+        <div className="grid md:grid-cols-2 gap-3">
+          <input
+            value={buttonText}
+            onChange={(e) => setButtonText(e.target.value)}
+            placeholder="Button text"
+            className="w-full bg-slate-800 rounded-lg p-3 outline-none"
+          />
+          <input
+            value={buttonUrl}
+            onChange={(e) => setButtonUrl(e.target.value)}
+            placeholder="Button URL"
+            className="w-full bg-slate-800 rounded-lg p-3 outline-none"
+          />
+        </div>
+        <div className="flex flex-wrap gap-4 text-sm">
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={toUsers} onChange={(e) => setToUsers(e.target.checked)} />
+            All users
+          </label>
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={toChannel} onChange={(e) => setToChannel(e.target.checked)} />
+            Telegram channel
+          </label>
+        </div>
+        <button
+          disabled={sending || !message.trim() || (!toUsers && !toChannel)}
+          onClick={async () => {
+            setSending(true);
+            try {
+              const res = await broadcast({
+                data: {
+                  token,
+                  message,
+                  imageUrl,
+                  buttonText,
+                  buttonUrl,
+                  toUsers,
+                  toChannel,
+                },
+              });
+              toast.success(`Sent ${res.sent}, failed ${res.failed}`);
+            } catch (e: any) {
+              toast.error(e.message);
+            } finally {
+              setSending(false);
+            }
+          }}
+          className="px-4 py-2 bg-pink-500 rounded-lg font-semibold disabled:opacity-60"
+        >
+          {sending ? "Sending..." : "Send Broadcast"}
+        </button>
+      </div>
     </div>
   );
 }
