@@ -22,10 +22,13 @@ declare global {
 
   namespace JSX {
     interface IntrinsicElements {
-      "adsgram-task": React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & {
+      "adsgram-task": {
         "data-block-id"?: string;
         "data-debug"?: string;
         "data-debug-console"?: string;
+        className?: string;
+        ref?: any;
+        children?: any;
       };
     }
   }
