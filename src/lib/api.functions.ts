@@ -994,6 +994,7 @@ export const getEarnStats = createServerFn({ method: "POST" })
     const { sb, user } = await authUser(data.initData);
     const settings = await getSettings(sb);
     const now = new Date();
+    const pendingWithdraw = await getPendingWithdraw(sb, user.id);
 
     // Daily ads
     const dailyResetAt = user.daily_ads_reset_at ? new Date(user.daily_ads_reset_at) : new Date(0);
@@ -1066,6 +1067,8 @@ export const getEarnStats = createServerFn({ method: "POST" })
         reward: Number(settings.ad_task_reward || 0.02),
         blockId: String(settings.ad_task_block || "task-30049"),
         minWatchSec: Number(settings.ad_min_watch_task || settings.ad_min_watch_rew || 33),
+        ctaBotLink: `https://t.me/${String(settings.bot_username || "RosePayFibot")}?startapp=open`,
+        ctaChannelLink: String(settings.community_channel || "https://t.me/rosepayfi"),
       },
       bonus: {
         ready: bonusReady,
@@ -1075,6 +1078,7 @@ export const getEarnStats = createServerFn({ method: "POST" })
       withdraw: {
         adsDone: user.withdraw_ads_done || 0,
         adsRequired: Number(settings.withdraw_ads_required || 2),
+        blockedByPending: !!pendingWithdraw,
       },
     };
   });
