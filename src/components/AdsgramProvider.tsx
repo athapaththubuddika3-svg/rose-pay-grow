@@ -18,7 +18,6 @@ declare global {
       init: (opts: { blockId: string }) => AdController;
     };
     show_11012677?: (opts?: any) => Promise<any>;
-    customElements?: CustomElementRegistry;
   }
 
   namespace JSX {
