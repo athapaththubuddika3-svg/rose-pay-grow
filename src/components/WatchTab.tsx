@@ -13,6 +13,8 @@ import {
   claimDailyBonus,
 } from "@/lib/api.functions";
 
+const AdsgramTask = "adsgram-task" as unknown as keyof JSX.IntrinsicElements;
+
 function fmtMs(ms: number) {
   if (ms <= 0) return "ready";
   const s = Math.ceil(ms / 1000);
@@ -271,7 +273,7 @@ export function WatchTab() {
               </span>
             ) : null}
             {s.adTask.count < s.adTask.limit && ads.taskReady ? (
-              <adsgram-task
+              <AdsgramTask
                 ref={taskRef as any}
                 data-block-id={s.adTask.blockId}
                 data-debug="false"
@@ -289,7 +291,7 @@ export function WatchTab() {
                 <div slot="done" className="px-4 py-2 rounded-xl bg-emerald-500/20 text-emerald-300 text-sm font-bold">
                   Done
                 </div>
-              </adsgram-task>
+              </AdsgramTask>
             ) : (
               <button disabled className="px-4 py-2 rounded-xl gradient-cyan text-white text-sm font-bold disabled:opacity-50">
                 {s.adTask.count >= s.adTask.limit ? "Done" : "Loading task..."}
