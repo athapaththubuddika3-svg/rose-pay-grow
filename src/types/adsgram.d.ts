@@ -1,31 +1,26 @@
-import "react";
+import type { DetailedHTMLProps, HTMLAttributes } from "react";
+
+type AdsgramTaskElementProps = DetailedHTMLProps<
+  HTMLAttributes<HTMLElement> & {
+    "data-block-id"?: string;
+    "data-debug"?: string;
+    "data-debug-console"?: string;
+  },
+  HTMLElement
+>;
 
 declare module "react" {
   namespace JSX {
     interface IntrinsicElements {
-      "adsgram-task": React.DetailedHTMLProps<
-        React.HTMLAttributes<HTMLElement> & {
-          "data-block-id"?: string;
-          "data-debug"?: string;
-          "data-debug-console"?: string;
-        },
-        HTMLElement
-      >;
+      "adsgram-task": AdsgramTaskElementProps;
     }
   }
 }
 
-declare global {
+declare module "react/jsx-runtime" {
   namespace JSX {
     interface IntrinsicElements {
-      "adsgram-task": React.DetailedHTMLProps<
-        React.HTMLAttributes<HTMLElement> & {
-          "data-block-id"?: string;
-          "data-debug"?: string;
-          "data-debug-console"?: string;
-        },
-        HTMLElement
-      >;
+      "adsgram-task": AdsgramTaskElementProps;
     }
   }
 }
