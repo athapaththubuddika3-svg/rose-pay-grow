@@ -9,15 +9,7 @@ type AdsgramTaskElementProps = DetailedHTMLProps<
   HTMLElement
 >;
 
-declare module "react" {
-  namespace JSX {
-    interface IntrinsicElements {
-      "adsgram-task": AdsgramTaskElementProps;
-    }
-  }
-}
-
-declare module "react/jsx-runtime" {
+declare global {
   namespace JSX {
     interface IntrinsicElements {
       "adsgram-task": AdsgramTaskElementProps;
