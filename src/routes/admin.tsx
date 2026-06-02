@@ -298,16 +298,20 @@ function UsersView({ token }: { token: string }) {
                 <td className="p-2 flex gap-1">
                   <button
                     onClick={async () => {
-                      await upd({
-                        data: {
-                          token,
-                          userId: u.id,
-                          suspended: !u.suspended,
-                          suspendReason: u.suspended ? (null as any) : "Manual",
-                        },
-                      });
-                      toast.success(u.suspended ? "Unsuspended" : "Suspended");
-                      reload();
+                      try {
+                        await upd({
+                          data: {
+                            token,
+                            userId: u.id,
+                            suspended: !u.suspended,
+                            suspendReason: u.suspended ? null : "Manual",
+                          },
+                        });
+                        toast.success(u.suspended ? "Unsuspended" : "Suspended");
+                        reload();
+                      } catch (err: any) {
+                        toast.error(err?.message || "Failed to update user");
+                      }
                     }}
                     className={`px-2 py-1 rounded text-xs ${u.suspended ? "bg-green-500/20 text-green-300" : "bg-red-500/20 text-red-300"}`}
                   >

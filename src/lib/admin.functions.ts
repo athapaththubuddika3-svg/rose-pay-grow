@@ -185,7 +185,7 @@ export const adminUpdateUser = createServerFn({ method: "POST" })
       userId: string;
       suspended?: boolean;
       balance?: number;
-      suspendReason?: string;
+      suspendReason?: string | null;
     }) =>
       z
         .object({
@@ -193,7 +193,7 @@ export const adminUpdateUser = createServerFn({ method: "POST" })
           userId: z.string().uuid(),
           suspended: z.boolean().optional(),
           balance: z.number().optional(),
-          suspendReason: z.string().optional(),
+          suspendReason: z.string().nullable().optional(),
         })
         .parse(d),
   )
