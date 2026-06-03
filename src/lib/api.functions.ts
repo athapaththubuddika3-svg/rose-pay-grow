@@ -880,17 +880,9 @@ export const requestWithdraw = createServerFn({ method: "POST" })
     if (verifiedRefCount < minRefs)
       throw new Error(`Need at least ${minRefs} verified referrals before withdrawing`);
     const dailyResetAt = user.daily_ads_reset_at ? new Date(user.daily_ads_reset_at) : new Date(0);
-    const lastDay = Date.UTC(
-      dailyResetAt.getUTCFullYear(),
-      dailyResetAt.getUTCMonth(),
-      dailyResetAt.getUTCDate(),
-    );
-    const todayUtc = Date.UTC(
-      new Date().getUTCFullYear(),
-      new Date().getUTCMonth(),
-      new Date().getUTCDate(),
-    );
-    const todayAdCount = todayUtc > lastDay ? 0 : Number(user.daily_ads_count || 0);
+    const todayAdCount = isNewColomboDay(dailyResetAt, new Date())
+      ? 0
+      : Number(user.daily_ads_count || 0);
     if (todayAdCount < minAds) throw new Error(`Need at least ${minAds} ads watched today`);
     if ((user.withdraw_ads_done || 0) < adsRequired)
       throw new Error(`Watch ${adsRequired} ads before withdrawing`);
