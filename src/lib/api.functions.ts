@@ -992,15 +992,9 @@ export const getEarnStats = createServerFn({ method: "POST" })
     const now = new Date();
     const pendingWithdraw = await getPendingWithdraw(sb, user.id);
 
-    // Daily ads
+    // Daily ads (reset at Asia/Colombo midnight)
     const dailyResetAt = user.daily_ads_reset_at ? new Date(user.daily_ads_reset_at) : new Date(0);
-    const lastDay = Date.UTC(
-      dailyResetAt.getUTCFullYear(),
-      dailyResetAt.getUTCMonth(),
-      dailyResetAt.getUTCDate(),
-    );
-    const todayUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-    const dailyCount = todayUtc > lastDay ? 0 : user.daily_ads_count || 0;
+    const dailyCount = isNewColomboDay(dailyResetAt, now) ? 0 : user.daily_ads_count || 0;
 
     // Session
     const sessionLimit = Number(settings.ad_session_limit || 20);
@@ -1014,16 +1008,11 @@ export const getEarnStats = createServerFn({ method: "POST" })
       sessionRemainMs = sessionHours * 3600_000 - (now.getTime() - sessionStart!.getTime());
     }
 
-    // Ad task
+    // Ad task (reset at Asia/Colombo midnight)
     const taskResetAt = user.daily_ad_tasks_reset_at
       ? new Date(user.daily_ad_tasks_reset_at)
       : new Date(0);
-    const lastTaskDay = Date.UTC(
-      taskResetAt.getUTCFullYear(),
-      taskResetAt.getUTCMonth(),
-      taskResetAt.getUTCDate(),
-    );
-    const taskCount = todayUtc > lastTaskDay ? 0 : user.daily_ad_tasks_count || 0;
+    const taskCount = isNewColomboDay(taskResetAt, now) ? 0 : user.daily_ad_tasks_count || 0;
     const cooldownSec = Number(settings.ad_task_cooldown_sec || 10);
     let cooldownRemainMs = 0;
     if (user.last_ad_task_claim_at) {
@@ -1031,17 +1020,15 @@ export const getEarnStats = createServerFn({ method: "POST" })
       if (since < cooldownSec * 1000) cooldownRemainMs = cooldownSec * 1000 - since;
     }
 
-    // Daily bonus
+    // Daily bonus (reset at Asia/Colombo midnight)
     const last = user.last_daily_bonus_at ? new Date(user.last_daily_bonus_at) : null;
     let bonusReady = true;
     let bonusRemainMs = 0;
     if (last) {
-      const nextReset = new Date(
-        Date.UTC(last.getUTCFullYear(), last.getUTCMonth(), last.getUTCDate() + 1),
-      );
-      if (Date.now() < nextReset.getTime()) {
+      const nextReset = nextColomboMidnightUtc(last);
+      if (Date.now() < nextReset) {
         bonusReady = false;
-        bonusRemainMs = nextReset.getTime() - Date.now();
+        bonusRemainMs = nextReset - Date.now();
       }
     }
 
