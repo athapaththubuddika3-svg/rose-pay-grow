@@ -1,24 +1,52 @@
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { motion } from "framer-motion";
-import { Gift, ChevronRight, BookOpen } from "lucide-react";
+import { Gift, ChevronRight, BookOpen, Sparkles, Clock, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useTelegram } from "./TelegramProvider";
 import { RoseCoin } from "./RoseCoin";
-import { getMe, claimRewardCode } from "@/lib/api.functions";
+import {
+  getMe,
+  claimRewardCode,
+  getCommissionBonus,
+  claimCommissionBonus,
+} from "@/lib/api.functions";
+
+function fmtRemain(ms: number) {
+  if (ms <= 0) return "expired";
+  const s = Math.floor(ms / 1000);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  return `${h}h ${m}m ${sec}s`;
+}
 
 export function HomeTab() {
   const tg = useTelegram();
   const fetchMe = useServerFn(getMe);
   const claim = useServerFn(claimRewardCode);
+  const fetchBonus = useServerFn(getCommissionBonus);
+  const claimBonus = useServerFn(claimCommissionBonus);
   const [data, setData] = useState<any>(null);
+  const [bonus, setBonus] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [code, setCode] = useState("");
+  const [busyBonus, setBusyBonus] = useState(false);
+  const [nowMs, setNowMs] = useState(Date.now());
+
+  useEffect(() => {
+    const i = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(i);
+  }, []);
 
   const reload = async () => {
     try {
-      const r = await fetchMe({ data: { initData: tg.initData, startParam: tg.startParam || undefined } });
+      const [r, b] = await Promise.all([
+        fetchMe({ data: { initData: tg.initData, startParam: tg.startParam || undefined } }),
+        fetchBonus({ data: { initData: tg.initData } }).catch(() => null),
+      ]);
       setData(r);
+      setBonus(b);
     } catch (e: any) {
       toast.error(e.message || "Failed to load");
     } finally {
@@ -52,6 +80,25 @@ export function HomeTab() {
       toast.error(e.message);
     }
   };
+
+  const handleBonus = async () => {
+    if (busyBonus) return;
+    setBusyBonus(true);
+    try {
+      const r = await claimBonus({ data: { initData: tg.initData } });
+      tg.haptic("success");
+      toast.success(`🎉 +${r.amount.toFixed(4)} ROSE bonus claimed!`);
+      reload();
+    } catch (e: any) {
+      tg.haptic("error");
+      toast.error(e.message);
+    } finally {
+      setBusyBonus(false);
+    }
+  };
+
+  const bonusRemain = bonus?.expiresAt ? Math.max(0, bonus.expiresAt - nowMs) : 0;
+  const showBonus = !!bonus && bonus.pct > 0 && (bonus.eligible || bonus.claimed) && bonusRemain > 0;
 
   return (
     <div className="px-4 pt-4 pb-28 space-y-4">
@@ -98,6 +145,58 @@ export function HomeTab() {
           </div>
         </div>
       </motion.div>
+
+      {/* Limited-time Commission Bonus */}
+      {showBonus && (
+        <motion.div
+          initial={{ scale: 0.95, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          className="glass rounded-2xl p-4 relative overflow-hidden border-rose-gold/60"
+        >
+          <div className="absolute -right-10 -top-10 w-40 h-40 bg-rose-gold/40 rounded-full blur-3xl" />
+          <div className="absolute -left-10 -bottom-10 w-32 h-32 bg-rose-pink/30 rounded-full blur-3xl" />
+          <div className="relative space-y-3">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-rose-gold" />
+              <p className="font-bold text-rose-gold">
+                {bonus.pct}% Balance Bonus
+              </p>
+              <span className="ml-auto text-[10px] px-2 py-0.5 rounded-full bg-rose-pink/20 text-rose-pink">
+                LIMITED
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {bonus.claimed
+                ? `You already claimed +${Number(bonus.claimedAmount).toFixed(4)} ROSE 🎉`
+                : `Claim a one-time +${bonus.pct}% bonus on your current balance.`}
+            </p>
+            <div className="flex items-center justify-between">
+              <div className="text-xs flex items-center gap-1 text-muted-foreground">
+                <Clock className="w-3 h-3" /> Ends in {fmtRemain(bonusRemain)}
+              </div>
+              {!bonus.claimed && (
+                <div className="flex items-center gap-1 text-rose-gold text-sm font-bold">
+                  <RoseCoin size={14} />+{Number(bonus.estAmount).toFixed(4)}
+                </div>
+              )}
+            </div>
+            {!bonus.claimed && (
+              <button
+                disabled={busyBonus || !bonus.eligible}
+                onClick={handleBonus}
+                className="w-full py-3 rounded-xl gradient-gold text-white font-bold disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {busyBonus ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <>🎁 Claim {bonus.pct}% Bonus Now</>
+                )}
+              </button>
+            )}
+          </div>
+        </motion.div>
+      )}
+
 
       {/* Stats grid */}
       <div className="grid grid-cols-2 gap-3">

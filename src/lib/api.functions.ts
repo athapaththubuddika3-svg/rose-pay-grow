@@ -11,6 +11,20 @@ import {
 } from "./telegram.server";
 import { getRequest, getRequestIP } from "@tanstack/react-start/server";
 
+// === Asia/Colombo (UTC+5:30) daily reset helpers ===
+const COLOMBO_OFFSET_MS = 5.5 * 3600_000;
+function colomboDayStartUtc(d: Date): number {
+  const c = d.getTime() + COLOMBO_OFFSET_MS;
+  const cDay = Math.floor(c / 86400_000) * 86400_000;
+  return cDay - COLOMBO_OFFSET_MS;
+}
+function nextColomboMidnightUtc(d: Date): number {
+  return colomboDayStartUtc(d) + 86400_000;
+}
+function isNewColomboDay(prev: Date, now: Date): boolean {
+  return colomboDayStartUtc(now) > colomboDayStartUtc(prev);
+}
+
 function readRequestIp() {
   try {
     const request = getRequest();
@@ -498,12 +512,10 @@ export const claimDailyBonus = createServerFn({ method: "POST" })
     const amount = Number(settings.daily_bonus_amount || 0.05);
     const last = user.last_daily_bonus_at ? new Date(user.last_daily_bonus_at) : null;
     if (last) {
-      // Reset at next 00:00 UTC after last claim
-      const nextReset = new Date(
-        Date.UTC(last.getUTCFullYear(), last.getUTCMonth(), last.getUTCDate() + 1),
-      );
-      if (Date.now() < nextReset.getTime()) {
-        const wait = nextReset.getTime() - Date.now();
+      // Reset at next 00:00 Asia/Colombo (UTC+5:30) after last claim
+      const nextReset = nextColomboMidnightUtc(last);
+      if (Date.now() < nextReset) {
+        const wait = nextReset - Date.now();
         return { ok: false, waitMs: wait, message: "Already claimed today" };
       }
     }
@@ -544,17 +556,11 @@ export const completeAdWatch = createServerFn({ method: "POST" })
     const sessionLimit = Number(settings.ad_session_limit || 20);
     const sessionHours = Number(settings.ad_session_hours || 12);
 
-    // Reset daily counter at UTC midnight
+    // Reset daily counter at Asia/Colombo midnight
     const now = new Date();
     let dailyCount = user.daily_ads_count || 0;
     let dailyResetAt = user.daily_ads_reset_at ? new Date(user.daily_ads_reset_at) : new Date(0);
-    const lastResetDay = Date.UTC(
-      dailyResetAt.getUTCFullYear(),
-      dailyResetAt.getUTCMonth(),
-      dailyResetAt.getUTCDate(),
-    );
-    const todayUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-    if (todayUtc > lastResetDay) {
+    if (isNewColomboDay(dailyResetAt, now)) {
       dailyCount = 0;
       dailyResetAt = now;
     }
@@ -698,10 +704,8 @@ export const completeAdTask = createServerFn({ method: "POST" })
     const resetAt = user.daily_ad_tasks_reset_at
       ? new Date(user.daily_ad_tasks_reset_at)
       : new Date(0);
-    const lastDay = Date.UTC(resetAt.getUTCFullYear(), resetAt.getUTCMonth(), resetAt.getUTCDate());
-    const todayUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
     let newReset = resetAt;
-    if (todayUtc > lastDay) {
+    if (isNewColomboDay(resetAt, now)) {
       count = 0;
       newReset = now;
     }
@@ -876,17 +880,9 @@ export const requestWithdraw = createServerFn({ method: "POST" })
     if (verifiedRefCount < minRefs)
       throw new Error(`Need at least ${minRefs} verified referrals before withdrawing`);
     const dailyResetAt = user.daily_ads_reset_at ? new Date(user.daily_ads_reset_at) : new Date(0);
-    const lastDay = Date.UTC(
-      dailyResetAt.getUTCFullYear(),
-      dailyResetAt.getUTCMonth(),
-      dailyResetAt.getUTCDate(),
-    );
-    const todayUtc = Date.UTC(
-      new Date().getUTCFullYear(),
-      new Date().getUTCMonth(),
-      new Date().getUTCDate(),
-    );
-    const todayAdCount = todayUtc > lastDay ? 0 : Number(user.daily_ads_count || 0);
+    const todayAdCount = isNewColomboDay(dailyResetAt, new Date())
+      ? 0
+      : Number(user.daily_ads_count || 0);
     if (todayAdCount < minAds) throw new Error(`Need at least ${minAds} ads watched today`);
     if ((user.withdraw_ads_done || 0) < adsRequired)
       throw new Error(`Watch ${adsRequired} ads before withdrawing`);
@@ -996,15 +992,9 @@ export const getEarnStats = createServerFn({ method: "POST" })
     const now = new Date();
     const pendingWithdraw = await getPendingWithdraw(sb, user.id);
 
-    // Daily ads
+    // Daily ads (reset at Asia/Colombo midnight)
     const dailyResetAt = user.daily_ads_reset_at ? new Date(user.daily_ads_reset_at) : new Date(0);
-    const lastDay = Date.UTC(
-      dailyResetAt.getUTCFullYear(),
-      dailyResetAt.getUTCMonth(),
-      dailyResetAt.getUTCDate(),
-    );
-    const todayUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-    const dailyCount = todayUtc > lastDay ? 0 : user.daily_ads_count || 0;
+    const dailyCount = isNewColomboDay(dailyResetAt, now) ? 0 : user.daily_ads_count || 0;
 
     // Session
     const sessionLimit = Number(settings.ad_session_limit || 20);
@@ -1018,16 +1008,11 @@ export const getEarnStats = createServerFn({ method: "POST" })
       sessionRemainMs = sessionHours * 3600_000 - (now.getTime() - sessionStart!.getTime());
     }
 
-    // Ad task
+    // Ad task (reset at Asia/Colombo midnight)
     const taskResetAt = user.daily_ad_tasks_reset_at
       ? new Date(user.daily_ad_tasks_reset_at)
       : new Date(0);
-    const lastTaskDay = Date.UTC(
-      taskResetAt.getUTCFullYear(),
-      taskResetAt.getUTCMonth(),
-      taskResetAt.getUTCDate(),
-    );
-    const taskCount = todayUtc > lastTaskDay ? 0 : user.daily_ad_tasks_count || 0;
+    const taskCount = isNewColomboDay(taskResetAt, now) ? 0 : user.daily_ad_tasks_count || 0;
     const cooldownSec = Number(settings.ad_task_cooldown_sec || 10);
     let cooldownRemainMs = 0;
     if (user.last_ad_task_claim_at) {
@@ -1035,17 +1020,15 @@ export const getEarnStats = createServerFn({ method: "POST" })
       if (since < cooldownSec * 1000) cooldownRemainMs = cooldownSec * 1000 - since;
     }
 
-    // Daily bonus
+    // Daily bonus (reset at Asia/Colombo midnight)
     const last = user.last_daily_bonus_at ? new Date(user.last_daily_bonus_at) : null;
     let bonusReady = true;
     let bonusRemainMs = 0;
     if (last) {
-      const nextReset = new Date(
-        Date.UTC(last.getUTCFullYear(), last.getUTCMonth(), last.getUTCDate() + 1),
-      );
-      if (Date.now() < nextReset.getTime()) {
+      const nextReset = nextColomboMidnightUtc(last);
+      if (Date.now() < nextReset) {
         bonusReady = false;
-        bonusRemainMs = nextReset.getTime() - Date.now();
+        bonusRemainMs = nextReset - Date.now();
       }
     }
 
@@ -1146,3 +1129,70 @@ async function maybeActivateRefBonus(sb: any, userId: string) {
     }
   }
 }
+
+// === Commission Bonus (one-time 20% balance boost, 24h window) ===
+export const getCommissionBonus = createServerFn({ method: "POST" })
+  .inputValidator((d: { initData: string }) => z.object({ initData: z.string() }).parse(d))
+  .handler(async ({ data }) => {
+    const { sb, user } = await authUser(data.initData);
+    const settings = await getSettings(sb);
+    const pct = Number(settings.commission_bonus_pct || 0);
+    const expiresRaw = settings.commission_bonus_expires_at;
+    const expiresAt = expiresRaw ? new Date(String(expiresRaw)).getTime() : 0;
+    const { data: existing } = await sb
+      .from("commission_bonus_claims")
+      .select("id, amount, claimed_at")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    const now = Date.now();
+    return {
+      pct,
+      expiresAt,
+      remainMs: Math.max(0, expiresAt - now),
+      claimed: !!existing,
+      claimedAmount: existing ? Number(existing.amount) : 0,
+      eligible: !!pct && !!expiresAt && now < expiresAt && !existing && Number(user.balance) > 0,
+      balance: Number(user.balance),
+      estAmount: (Number(user.balance) * pct) / 100,
+    };
+  });
+
+export const claimCommissionBonus = createServerFn({ method: "POST" })
+  .inputValidator((d: { initData: string }) => z.object({ initData: z.string() }).parse(d))
+  .handler(async ({ data }) => {
+    const { sb, user } = await authUser(data.initData);
+    if (user.suspended) throw new Error("Account suspended");
+    await balanceAudit(sb, user);
+    const settings = await getSettings(sb);
+    const pct = Number(settings.commission_bonus_pct || 0);
+    if (!pct) throw new Error("Bonus not available");
+    const expiresAt = settings.commission_bonus_expires_at
+      ? new Date(String(settings.commission_bonus_expires_at)).getTime()
+      : 0;
+    if (!expiresAt || Date.now() >= expiresAt) throw new Error("Bonus offer expired");
+    const { data: existing } = await sb
+      .from("commission_bonus_claims")
+      .select("id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (existing) throw new Error("Already claimed");
+    const bal = Number(user.balance);
+    if (bal <= 0) throw new Error("Your balance is 0 — earn some ROSE first");
+    const amount = Math.round(((bal * pct) / 100) * 10000) / 10000;
+    const { error: insErr } = await sb
+      .from("commission_bonus_claims")
+      .insert({ user_id: user.id, amount, pct });
+    if (insErr) {
+      if (String(insErr.message || "").toLowerCase().includes("duplicate"))
+        throw new Error("Already claimed");
+      throw new Error(insErr.message);
+    }
+    await sb
+      .from("app_users")
+      .update({
+        balance: bal + amount,
+        total_earned: Number(user.total_earned) + amount,
+      })
+      .eq("id", user.id);
+    return { ok: true, amount, pct };
+  });

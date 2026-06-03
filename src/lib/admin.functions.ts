@@ -587,15 +587,17 @@ export const adminBroadcast = createServerFn({ method: "POST" })
         .select("telegram_id")
         .eq("suspended", false)
         .eq("notif_enabled", true);
-      for (const u of users || []) {
-        try {
-          await send(u.telegram_id);
-          sent++;
-        } catch {
-          failed++;
+      const list = users || [];
+      const batchSize = 25;
+      for (let i = 0; i < list.length; i += batchSize) {
+        const batch = list.slice(i, i + batchSize);
+        const results = await Promise.allSettled(batch.map((u: any) => send(u.telegram_id)));
+        for (const r of results) {
+          if (r.status === "fulfilled") sent++;
+          else failed++;
         }
-        // Small delay to avoid rate limit (~30/sec)
-        await new Promise((r) => setTimeout(r, 50));
+        // brief pause between batches to respect Telegram global ~30 msg/sec
+        await new Promise((r) => setTimeout(r, 200));
       }
     }
 
