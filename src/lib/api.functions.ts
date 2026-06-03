@@ -704,10 +704,8 @@ export const completeAdTask = createServerFn({ method: "POST" })
     const resetAt = user.daily_ad_tasks_reset_at
       ? new Date(user.daily_ad_tasks_reset_at)
       : new Date(0);
-    const lastDay = Date.UTC(resetAt.getUTCFullYear(), resetAt.getUTCMonth(), resetAt.getUTCDate());
-    const todayUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
     let newReset = resetAt;
-    if (todayUtc > lastDay) {
+    if (isNewColomboDay(resetAt, now)) {
       count = 0;
       newReset = now;
     }
