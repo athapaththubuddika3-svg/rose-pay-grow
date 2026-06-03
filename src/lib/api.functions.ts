@@ -512,12 +512,10 @@ export const claimDailyBonus = createServerFn({ method: "POST" })
     const amount = Number(settings.daily_bonus_amount || 0.05);
     const last = user.last_daily_bonus_at ? new Date(user.last_daily_bonus_at) : null;
     if (last) {
-      // Reset at next 00:00 UTC after last claim
-      const nextReset = new Date(
-        Date.UTC(last.getUTCFullYear(), last.getUTCMonth(), last.getUTCDate() + 1),
-      );
-      if (Date.now() < nextReset.getTime()) {
-        const wait = nextReset.getTime() - Date.now();
+      // Reset at next 00:00 Asia/Colombo (UTC+5:30) after last claim
+      const nextReset = nextColomboMidnightUtc(last);
+      if (Date.now() < nextReset) {
+        const wait = nextReset - Date.now();
         return { ok: false, waitMs: wait, message: "Already claimed today" };
       }
     }
