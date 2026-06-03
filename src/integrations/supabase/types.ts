@@ -332,6 +332,38 @@ export type Database = {
         }
         Relationships: []
       }
+      commission_bonus_claims: {
+        Row: {
+          amount: number
+          claimed_at: string
+          id: string
+          pct: number
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          claimed_at?: string
+          id?: string
+          pct: number
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          claimed_at?: string
+          id?: string
+          pct?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commission_bonus_claims_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "app_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       daily_bonus_claims: {
         Row: {
           amount: number
