@@ -556,17 +556,11 @@ export const completeAdWatch = createServerFn({ method: "POST" })
     const sessionLimit = Number(settings.ad_session_limit || 20);
     const sessionHours = Number(settings.ad_session_hours || 12);
 
-    // Reset daily counter at UTC midnight
+    // Reset daily counter at Asia/Colombo midnight
     const now = new Date();
     let dailyCount = user.daily_ads_count || 0;
     let dailyResetAt = user.daily_ads_reset_at ? new Date(user.daily_ads_reset_at) : new Date(0);
-    const lastResetDay = Date.UTC(
-      dailyResetAt.getUTCFullYear(),
-      dailyResetAt.getUTCMonth(),
-      dailyResetAt.getUTCDate(),
-    );
-    const todayUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-    if (todayUtc > lastResetDay) {
+    if (isNewColomboDay(dailyResetAt, now)) {
       dailyCount = 0;
       dailyResetAt = now;
     }
