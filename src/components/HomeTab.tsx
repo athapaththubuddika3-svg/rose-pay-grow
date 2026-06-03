@@ -1,24 +1,52 @@
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { motion } from "framer-motion";
-import { Gift, ChevronRight, BookOpen } from "lucide-react";
+import { Gift, ChevronRight, BookOpen, Sparkles, Clock, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useTelegram } from "./TelegramProvider";
 import { RoseCoin } from "./RoseCoin";
-import { getMe, claimRewardCode } from "@/lib/api.functions";
+import {
+  getMe,
+  claimRewardCode,
+  getCommissionBonus,
+  claimCommissionBonus,
+} from "@/lib/api.functions";
+
+function fmtRemain(ms: number) {
+  if (ms <= 0) return "expired";
+  const s = Math.floor(ms / 1000);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  return `${h}h ${m}m ${sec}s`;
+}
 
 export function HomeTab() {
   const tg = useTelegram();
   const fetchMe = useServerFn(getMe);
   const claim = useServerFn(claimRewardCode);
+  const fetchBonus = useServerFn(getCommissionBonus);
+  const claimBonus = useServerFn(claimCommissionBonus);
   const [data, setData] = useState<any>(null);
+  const [bonus, setBonus] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [code, setCode] = useState("");
+  const [busyBonus, setBusyBonus] = useState(false);
+  const [nowMs, setNowMs] = useState(Date.now());
+
+  useEffect(() => {
+    const i = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(i);
+  }, []);
 
   const reload = async () => {
     try {
-      const r = await fetchMe({ data: { initData: tg.initData, startParam: tg.startParam || undefined } });
+      const [r, b] = await Promise.all([
+        fetchMe({ data: { initData: tg.initData, startParam: tg.startParam || undefined } }),
+        fetchBonus({ data: { initData: tg.initData } }).catch(() => null),
+      ]);
       setData(r);
+      setBonus(b);
     } catch (e: any) {
       toast.error(e.message || "Failed to load");
     } finally {
@@ -52,6 +80,25 @@ export function HomeTab() {
       toast.error(e.message);
     }
   };
+
+  const handleBonus = async () => {
+    if (busyBonus) return;
+    setBusyBonus(true);
+    try {
+      const r = await claimBonus({ data: { initData: tg.initData } });
+      tg.haptic("success");
+      toast.success(`🎉 +${r.amount.toFixed(4)} ROSE bonus claimed!`);
+      reload();
+    } catch (e: any) {
+      tg.haptic("error");
+      toast.error(e.message);
+    } finally {
+      setBusyBonus(false);
+    }
+  };
+
+  const bonusRemain = bonus?.expiresAt ? Math.max(0, bonus.expiresAt - nowMs) : 0;
+  const showBonus = !!bonus && bonus.pct > 0 && (bonus.eligible || bonus.claimed) && bonusRemain > 0;
 
   return (
     <div className="px-4 pt-4 pb-28 space-y-4">
