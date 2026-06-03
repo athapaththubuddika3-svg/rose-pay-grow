@@ -11,6 +11,20 @@ import {
 } from "./telegram.server";
 import { getRequest, getRequestIP } from "@tanstack/react-start/server";
 
+// === Asia/Colombo (UTC+5:30) daily reset helpers ===
+const COLOMBO_OFFSET_MS = 5.5 * 3600_000;
+function colomboDayStartUtc(d: Date): number {
+  const c = d.getTime() + COLOMBO_OFFSET_MS;
+  const cDay = Math.floor(c / 86400_000) * 86400_000;
+  return cDay - COLOMBO_OFFSET_MS;
+}
+function nextColomboMidnightUtc(d: Date): number {
+  return colomboDayStartUtc(d) + 86400_000;
+}
+function isNewColomboDay(prev: Date, now: Date): boolean {
+  return colomboDayStartUtc(now) > colomboDayStartUtc(prev);
+}
+
 function readRequestIp() {
   try {
     const request = getRequest();
