@@ -13,6 +13,7 @@ export function NotifGate({ children }: { children: ReactNode }) {
   const [suspended, setSuspended] = useState(false);
   const [suspendReason, setSuspendReason] = useState("");
   const [waiting, setWaiting] = useState(false);
+  const isPreviewMode = !tg.isInTelegram && tg.initData.includes("hash=DEV");
 
   const check = async () => {
     try {
@@ -75,7 +76,7 @@ export function NotifGate({ children }: { children: ReactNode }) {
               <p className="text-sm text-muted-foreground mt-3">{suspendReason}</p>
             </motion.div>
           </motion.div>
-        ) : !enabled && (
+        ) : !enabled && !isPreviewMode && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
