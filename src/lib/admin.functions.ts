@@ -376,12 +376,13 @@ export const adminReviewWithdraw = createServerFn({ method: "POST" })
       .maybeSingle();
     const paymentChannel = (settings?.value as string) || "@rosepayfipayment";
     if (data.approve) {
-      if (!data.txId) throw new Error("TX ID required");
+      const txId = String(data.txId || "").trim();
+      if (!txId) throw new Error("TX ID required");
       await sb
         .from("withdrawals")
         .update({
           status: "approved",
-          tx_id: data.txId,
+          tx_id: txId,
           reviewed_at: new Date().toISOString(),
         })
         .eq("id", data.id);
@@ -394,14 +395,14 @@ export const adminReviewWithdraw = createServerFn({ method: "POST" })
       try {
         await tgApi("sendMessage", {
           chat_id: paymentChannel,
-          text: `💸 <b>Withdrawal Paid</b>\nUser: @${u.username || u.first_name}\nAmount: <b>${wd.amount} ROSE</b>\nWallet: <code>${wd.wallet_address}</code>`,
+          text: `💸 <b>Withdrawal Paid</b>\nUser: @${u.username || u.first_name}\nTelegram ID: <code>${u.telegram_id}</code>\nAmount: <b>${wd.amount} ROSE</b>\nWallet: <code>${wd.wallet_address}</code>\nTX ID: <code>${txId}</code>`,
           parse_mode: "HTML",
           reply_markup: {
             inline_keyboard: [
               [
                 {
                   text: "🔍 View Transaction",
-                  url: `https://www.oasisscan.com/transactions/${data.txId}`,
+                  url: `https://www.oasisscan.com/transactions/${txId}`,
                 },
               ],
               [{ text: "🚀 Open RosePayFi", url: "https://t.me/RosePayFibot?startapp=open" }],
@@ -412,7 +413,7 @@ export const adminReviewWithdraw = createServerFn({ method: "POST" })
       try {
         await tgApi("sendMessage", {
           chat_id: u.telegram_id,
-          text: `✅ <b>Withdrawal Approved!</b>\nAmount: ${wd.amount} ROSE\nTX: <code>${data.txId}</code>`,
+          text: `✅ <b>Withdrawal Approved!</b>\nAmount: ${wd.amount} ROSE\nTX: <code>${txId}</code>`,
           parse_mode: "HTML",
           reply_markup: appKeyboard(),
         });

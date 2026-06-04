@@ -60,12 +60,14 @@ export function ProfileTab() {
   const minWd = Number(settings.min_withdraw || 10);
   const fee = Number(settings.withdraw_fee || 0.5);
   const maxWd = Number(settings.max_withdraw || 10);
+  const hasPendingWithdraw = !!data.meta?.pendingWithdraw;
   const amountNum = Number(amount || 0);
   const netAmount = Math.max(0, amountNum - fee);
 
   const tryWithdraw = () => {
     if (u.total_ref_count < minRefs) return toast.error(`Need at least ${minRefs} referrals`);
     if (u.total_ads < minAds) return toast.error(`Need at least ${minAds} daily ads`);
+    if (hasPendingWithdraw) return toast.error("You already have a pending withdrawal request");
     if (Number(u.balance) < minWd) return toast.error(`Min ${minWd} ROSE balance`);
     setAmount(String(u.balance));
     setShowWd(true);
@@ -136,9 +138,10 @@ export function ProfileTab() {
         </p>
         <button
           onClick={tryWithdraw}
+          disabled={hasPendingWithdraw}
           className="w-full mt-3 py-2.5 rounded-xl gradient-pink text-white font-semibold flex items-center justify-center gap-2"
         >
-          <Wallet className="w-4 h-4" /> Withdraw
+          <Wallet className="w-4 h-4" /> {hasPendingWithdraw ? "Withdraw Pending" : "Withdraw"}
         </button>
         <button
           onClick={loadHistory}
@@ -162,6 +165,7 @@ export function ProfileTab() {
           • Daily ads: {minAds} ({u.total_ads}) {u.total_ads >= minAds ? "✅" : "❌"}
         </p>
         <p>• All Main + Partner tasks must be approved before withdraw</p>
+        {hasPendingWithdraw && <p>• Pending withdraw request exists ❌</p>}
       </div>
 
       {/* Withdraw modal */}

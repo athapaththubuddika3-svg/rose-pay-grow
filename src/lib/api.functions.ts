@@ -45,6 +45,7 @@ function readRequestIp() {
 async function authUser(initData: string, startParam?: string) {
   let parsed = verifyInitData(initData);
   const allowUnsafeDevInit = initData.includes("hash=DEV");
+  const skipPreviewSuspension = allowUnsafeDevInit && process.env.NODE_ENV !== "production";
   if (!parsed && (!BOT_TOKEN || process.env.NODE_ENV !== "production" || allowUnsafeDevInit)) {
     parsed = parseInitDataUnsafe(initData);
   }
@@ -93,7 +94,7 @@ async function authUser(initData: string, startParam?: string) {
         .eq("ip_address", ip)
         .limit(1)
         .maybeSingle();
-      if (sameIp) {
+      if (sameIp && !skipPreviewSuspension) {
         suspended = true;
         suspendReason = "Multiple accounts from same IP";
         blockReferral = true;
@@ -168,7 +169,7 @@ async function authUser(initData: string, startParam?: string) {
         .limit(1)
         .maybeSingle();
 
-      if (sameIpUser && !existing.suspended) {
+      if (sameIpUser && !existing.suspended && !skipPreviewSuspension) {
         await sb
           .from("app_users")
           .update({
@@ -181,6 +182,26 @@ async function authUser(initData: string, startParam?: string) {
           ...existing,
           suspended: true,
           suspend_reason: "Multiple accounts from same IP",
+        };
+      }
+
+      if (
+        skipPreviewSuspension &&
+        existing.suspended &&
+        existing.suspend_reason === "Multiple accounts from same IP"
+      ) {
+        await sb
+          .from("app_users")
+          .update({
+            suspended: false,
+            suspend_reason: null,
+          })
+          .eq("id", existing.id);
+
+        existing = {
+          ...existing,
+          suspended: false,
+          suspend_reason: null,
         };
       }
     }
@@ -867,7 +888,6 @@ export const requestWithdraw = createServerFn({ method: "POST" })
     const fee = Number(settings.withdraw_fee || 0.5);
     const minRefs = Number(settings.min_refs_for_withdraw || 2);
     const minAds = Number(settings.min_daily_ads_for_withdraw || 10);
-    const adsRequired = Number(settings.withdraw_ads_required || 2);
     const [verifiedRefCount, pendingWithdraw] = await Promise.all([
       getVerifiedRefCount(sb, user.id),
       getPendingWithdraw(sb, user.id),
@@ -884,8 +904,6 @@ export const requestWithdraw = createServerFn({ method: "POST" })
       ? 0
       : Number(user.daily_ads_count || 0);
     if (todayAdCount < minAds) throw new Error(`Need at least ${minAds} ads watched today`);
-    if ((user.withdraw_ads_done || 0) < adsRequired)
-      throw new Error(`Watch ${adsRequired} ads before withdrawing`);
 
     // Check all main + partner tasks done
     const { data: required } = await sb
@@ -914,7 +932,6 @@ export const requestWithdraw = createServerFn({ method: "POST" })
       .update({
         wallet_address: data.address,
         balance: Number(user.balance) - data.amount,
-        withdraw_ads_done: 0, // reset gate counter
       })
       .eq("id", user.id);
 
@@ -1059,8 +1076,6 @@ export const getEarnStats = createServerFn({ method: "POST" })
         amount: Number(settings.daily_bonus_amount || 0.05),
       },
       withdraw: {
-        adsDone: user.withdraw_ads_done || 0,
-        adsRequired: Number(settings.withdraw_ads_required || 2),
         blockedByPending: !!pendingWithdraw,
       },
     };
@@ -1130,69 +1145,3 @@ async function maybeActivateRefBonus(sb: any, userId: string) {
   }
 }
 
-// === Commission Bonus (one-time 20% balance boost, 24h window) ===
-export const getCommissionBonus = createServerFn({ method: "POST" })
-  .inputValidator((d: { initData: string }) => z.object({ initData: z.string() }).parse(d))
-  .handler(async ({ data }) => {
-    const { sb, user } = await authUser(data.initData);
-    const settings = await getSettings(sb);
-    const pct = Number(settings.commission_bonus_pct || 0);
-    const expiresRaw = settings.commission_bonus_expires_at;
-    const expiresAt = expiresRaw ? new Date(String(expiresRaw)).getTime() : 0;
-    const { data: existing } = await sb
-      .from("commission_bonus_claims")
-      .select("id, amount, claimed_at")
-      .eq("user_id", user.id)
-      .maybeSingle();
-    const now = Date.now();
-    return {
-      pct,
-      expiresAt,
-      remainMs: Math.max(0, expiresAt - now),
-      claimed: !!existing,
-      claimedAmount: existing ? Number(existing.amount) : 0,
-      eligible: !!pct && !!expiresAt && now < expiresAt && !existing && Number(user.balance) > 0,
-      balance: Number(user.balance),
-      estAmount: (Number(user.balance) * pct) / 100,
-    };
-  });
-
-export const claimCommissionBonus = createServerFn({ method: "POST" })
-  .inputValidator((d: { initData: string }) => z.object({ initData: z.string() }).parse(d))
-  .handler(async ({ data }) => {
-    const { sb, user } = await authUser(data.initData);
-    if (user.suspended) throw new Error("Account suspended");
-    await balanceAudit(sb, user);
-    const settings = await getSettings(sb);
-    const pct = Number(settings.commission_bonus_pct || 0);
-    if (!pct) throw new Error("Bonus not available");
-    const expiresAt = settings.commission_bonus_expires_at
-      ? new Date(String(settings.commission_bonus_expires_at)).getTime()
-      : 0;
-    if (!expiresAt || Date.now() >= expiresAt) throw new Error("Bonus offer expired");
-    const { data: existing } = await sb
-      .from("commission_bonus_claims")
-      .select("id")
-      .eq("user_id", user.id)
-      .maybeSingle();
-    if (existing) throw new Error("Already claimed");
-    const bal = Number(user.balance);
-    if (bal <= 0) throw new Error("Your balance is 0 — earn some ROSE first");
-    const amount = Math.round(((bal * pct) / 100) * 10000) / 10000;
-    const { error: insErr } = await sb
-      .from("commission_bonus_claims")
-      .insert({ user_id: user.id, amount, pct });
-    if (insErr) {
-      if (String(insErr.message || "").toLowerCase().includes("duplicate"))
-        throw new Error("Already claimed");
-      throw new Error(insErr.message);
-    }
-    await sb
-      .from("app_users")
-      .update({
-        balance: bal + amount,
-        total_earned: Number(user.total_earned) + amount,
-      })
-      .eq("id", user.id);
-    return { ok: true, amount, pct };
-  });

@@ -13,8 +13,6 @@ import {
   claimDailyBonus,
 } from "@/lib/api.functions";
 
-const AdsgramTask = "adsgram-task" as unknown as keyof JSX.IntrinsicElements;
-
 function fmtMs(ms: number) {
   if (ms <= 0) return "ready";
   const s = Math.ceil(ms / 1000);
@@ -36,7 +34,12 @@ export function WatchTab() {
   const [s, setS] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
-  const taskRef = useRef<HTMLElement | null>(null);
+  const busyRef = useRef<string | null>(null);
+  const taskMountRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    busyRef.current = busy;
+  }, [busy]);
 
   const reload = async () => {
     try {
@@ -86,10 +89,38 @@ export function WatchTab() {
   };
 
   useEffect(() => {
-    if (!ads.taskReady || !taskRef.current || !s?.adTask?.blockId) return;
-    const taskEl = taskRef.current;
+    if (!ads.taskReady || !taskMountRef.current || !s?.adTask?.blockId) return;
+    const mount = taskMountRef.current;
+    mount.replaceChildren();
+
+    const taskEl = document.createElement("adsgram-task");
+    taskEl.setAttribute("data-block-id", s.adTask.blockId);
+    taskEl.setAttribute("data-debug", "false");
+    taskEl.className = "block";
+
+    const addSlot = (slot: string, text: string, className: string) => {
+      const node = document.createElement("div");
+      node.slot = slot;
+      node.className = className;
+      node.textContent = text;
+      taskEl.appendChild(node);
+    };
+
+    addSlot("reward", `+${s.adTask.reward} ROSE`, "text-[11px] text-rose-gold font-semibold");
+    addSlot("button", "Start Task Ad", "px-4 py-2 rounded-xl gradient-cyan text-white text-sm font-bold");
+    addSlot(
+      "claim",
+      "Claim Task Reward",
+      "px-4 py-2 rounded-xl gradient-cyan text-white text-sm font-bold",
+    );
+    addSlot(
+      "done",
+      "Done",
+      "px-4 py-2 rounded-xl bg-emerald-500/20 text-emerald-300 text-sm font-bold",
+    );
+
     const onReward = async () => {
-      if (busy) return;
+      if (busyRef.current) return;
       setBusy("task");
       try {
         const res = await adTask({ data: { initData: tg.initData, blockId: s.adTask.blockId } });
@@ -107,11 +138,14 @@ export function WatchTab() {
     const onError = () => toast.error("Ad task failed to load");
     taskEl.addEventListener("reward", onReward as EventListener);
     taskEl.addEventListener("onError", onError as EventListener);
+    mount.appendChild(taskEl);
+
     return () => {
       taskEl.removeEventListener("reward", onReward as EventListener);
       taskEl.removeEventListener("onError", onError as EventListener);
+      taskEl.remove();
     };
-  }, [ads.taskReady, s?.adTask?.blockId, tg.initData, busy]);
+  }, [ads.taskReady, adTask, s?.adTask?.blockId, s?.adTask?.reward, tg]);
 
   const handleBonus = async () => {
     if (busy) return;
@@ -273,25 +307,7 @@ export function WatchTab() {
               </span>
             ) : null}
             {s.adTask.count < s.adTask.limit && ads.taskReady ? (
-              <AdsgramTask
-                ref={taskRef as any}
-                data-block-id={s.adTask.blockId}
-                data-debug="false"
-                className="block"
-              >
-                <div slot="reward" className="text-[11px] text-rose-gold font-semibold">
-                  +{s.adTask.reward} ROSE
-                </div>
-                <div slot="button" className="px-4 py-2 rounded-xl gradient-cyan text-white text-sm font-bold">
-                  Start Task Ad
-                </div>
-                <div slot="claim" className="px-4 py-2 rounded-xl gradient-cyan text-white text-sm font-bold">
-                  Claim Task Reward
-                </div>
-                <div slot="done" className="px-4 py-2 rounded-xl bg-emerald-500/20 text-emerald-300 text-sm font-bold">
-                  Done
-                </div>
-              </AdsgramTask>
+              <div ref={taskMountRef} className="block" />
             ) : (
               <button disabled className="px-4 py-2 rounded-xl gradient-cyan text-white text-sm font-bold disabled:opacity-50">
                 {s.adTask.count >= s.adTask.limit ? "Done" : "Loading task..."}
@@ -323,19 +339,6 @@ export function WatchTab() {
           </div>
         </div>
       </motion.div>
-
-      {/* Withdraw gate progress */}
-      <div className="glass rounded-xl p-3 text-xs flex items-center justify-between">
-        <div>
-          <p className="font-semibold">Withdraw gate</p>
-          <p className="text-muted-foreground">
-            Watch {s.withdraw.adsRequired} ads before each withdraw
-          </p>
-        </div>
-        <span className="text-rose-gold font-bold">
-          {s.withdraw.adsDone}/{s.withdraw.adsRequired}
-        </span>
-      </div>
     </div>
   );
 }

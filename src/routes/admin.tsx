@@ -673,6 +673,8 @@ function WithdrawalsView({ token }: { token: string }) {
   const review = useServerFn(adminReviewWithdraw);
   const [items, setItems] = useState<any[]>([]);
   const [filter, setFilter] = useState("pending");
+  const [approvingId, setApprovingId] = useState<string | null>(null);
+  const [txInputs, setTxInputs] = useState<Record<string, string>>({});
   const reload = () => list({ data: { token, status: filter } }).then((r) => setItems(r.items));
   useEffect(() => {
     reload();
@@ -706,6 +708,16 @@ function WithdrawalsView({ token }: { token: string }) {
                 <p className="text-xs text-slate-500">
                   Refs: {w.user?.total_ref_count} · Total Withdrawn: {w.user?.total_withdraw}
                 </p>
+                {w.status === "pending" && (
+                  <div className="mt-2 flex gap-2">
+                    <input
+                      value={txInputs[w.id] ?? ""}
+                      onChange={(e) => setTxInputs((prev) => ({ ...prev, [w.id]: e.target.value }))}
+                      placeholder="Enter tx id"
+                      className="flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs outline-none focus:border-pink-500"
+                    />
+                  </div>
+                )}
                 {w.tx_id && <p className="text-xs text-green-400 mt-1">TX: {w.tx_id}</p>}
                 {w.reject_reason && (
                   <p className="text-xs text-red-400 mt-1">Reason: {w.reject_reason}</p>
@@ -721,15 +733,24 @@ function WithdrawalsView({ token }: { token: string }) {
               <div className="flex gap-2 mt-2">
                 <button
                   onClick={async () => {
-                    const tx = prompt("Transaction ID / Hash");
-                    if (!tx) return;
-                    await review({ data: { token, id: w.id, approve: true, txId: tx } });
-                    toast.success("Approved & posted");
-                    reload();
+                    const tx = (txInputs[w.id] || "").trim();
+                    if (!tx) return toast.error("Enter tx id first");
+                    setApprovingId(w.id);
+                    try {
+                      await review({ data: { token, id: w.id, approve: true, txId: tx } });
+                      toast.success("Approved & posted");
+                      setTxInputs((prev) => ({ ...prev, [w.id]: "" }));
+                      reload();
+                    } catch (e: any) {
+                      toast.error(e.message || "Approval failed");
+                    } finally {
+                      setApprovingId(null);
+                    }
                   }}
+                  disabled={approvingId === w.id}
                   className="flex-1 py-1.5 bg-green-500/20 text-green-300 rounded text-sm"
                 >
-                  Approve & Pay
+                  {approvingId === w.id ? "Posting..." : "Approve & Pay"}
                 </button>
                 <button
                   onClick={async () => {
@@ -971,7 +992,6 @@ function SettingsView({ token }: { token: string }) {
     ["withdraw_fee", "Withdraw Fee (ROSE)", 0.5],
     ["min_refs_for_withdraw", "Min Referrals for Withdraw", 2],
     ["min_daily_ads_for_withdraw", "Min Daily Ads for Withdraw", 10],
-    ["withdraw_ads_required", "Gate Ads before each Withdraw", 2],
     ["ref_bonus", "Referral Bonus (ROSE)", 1],
     ["ref_commission_pct", "Referral Commission %", 10],
     ["daily_bonus_amount", "Daily Bonus (ROSE)", 0.05],
