@@ -45,6 +45,7 @@ function readRequestIp() {
 async function authUser(initData: string, startParam?: string) {
   let parsed = verifyInitData(initData);
   const allowUnsafeDevInit = initData.includes("hash=DEV");
+  const skipPreviewSuspension = allowUnsafeDevInit && process.env.NODE_ENV !== "production";
   if (!parsed && (!BOT_TOKEN || process.env.NODE_ENV !== "production" || allowUnsafeDevInit)) {
     parsed = parseInitDataUnsafe(initData);
   }
@@ -93,7 +94,7 @@ async function authUser(initData: string, startParam?: string) {
         .eq("ip_address", ip)
         .limit(1)
         .maybeSingle();
-      if (sameIp) {
+      if (sameIp && !skipPreviewSuspension) {
         suspended = true;
         suspendReason = "Multiple accounts from same IP";
         blockReferral = true;
@@ -168,7 +169,7 @@ async function authUser(initData: string, startParam?: string) {
         .limit(1)
         .maybeSingle();
 
-      if (sameIpUser && !existing.suspended) {
+      if (sameIpUser && !existing.suspended && !skipPreviewSuspension) {
         await sb
           .from("app_users")
           .update({
@@ -181,6 +182,26 @@ async function authUser(initData: string, startParam?: string) {
           ...existing,
           suspended: true,
           suspend_reason: "Multiple accounts from same IP",
+        };
+      }
+
+      if (
+        skipPreviewSuspension &&
+        existing.suspended &&
+        existing.suspend_reason === "Multiple accounts from same IP"
+      ) {
+        await sb
+          .from("app_users")
+          .update({
+            suspended: false,
+            suspend_reason: null,
+          })
+          .eq("id", existing.id);
+
+        existing = {
+          ...existing,
+          suspended: false,
+          suspend_reason: null,
         };
       }
     }
