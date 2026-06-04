@@ -992,7 +992,6 @@ function SettingsView({ token }: { token: string }) {
     ["withdraw_fee", "Withdraw Fee (ROSE)", 0.5],
     ["min_refs_for_withdraw", "Min Referrals for Withdraw", 2],
     ["min_daily_ads_for_withdraw", "Min Daily Ads for Withdraw", 10],
-    ["withdraw_ads_required", "Gate Ads before each Withdraw", 2],
     ["ref_bonus", "Referral Bonus (ROSE)", 1],
     ["ref_commission_pct", "Referral Commission %", 10],
     ["daily_bonus_amount", "Daily Bonus (ROSE)", 0.05],
