@@ -95,12 +95,17 @@ export function WatchTab() {
 
   const handleWatch = async () => {
     if (busy) return;
+    const rewardedBlockId = String(s?.ads?.blockId ?? "");
+    if (!rewardedBlockId) {
+      toast.error("Ad block is not configured");
+      return;
+    }
     setBusy("ad");
     try {
-      const r = await ads.showRewarded(s.ads.blockId);
+      const r = await ads.showRewarded(rewardedBlockId);
       if (!r.ok) throw new Error(r.error || "Watch the full ad to earn");
       const res = await watch({
-        data: { initData: tg.initData, durationSec: r.durationSec, blockId: s.ads.blockId },
+        data: { initData: tg.initData, durationSec: r.durationSec, blockId: rewardedBlockId },
       });
       if (!res.ok) throw new Error(res.message || "Limit reached");
       tg.haptic("success");
@@ -115,7 +120,9 @@ export function WatchTab() {
   };
 
   useEffect(() => {
-    if (!ads.taskReady || !taskMountRef.current || !s?.adTask?.blockId) return;
+    const taskBlockId = String(s?.adTask?.blockId ?? "");
+    const taskReward = Number(s?.adTask?.reward ?? 0);
+    if (!ads.taskReady || !taskMountRef.current || !taskBlockId) return;
     if (!window.customElements?.get("adsgram-task")) return;
     const mount = taskMountRef.current;
     mount.replaceChildren();
@@ -123,7 +130,7 @@ export function WatchTab() {
     let taskEl: HTMLElement;
     try {
       taskEl = document.createElement("adsgram-task");
-      taskEl.setAttribute("data-block-id", s.adTask.blockId);
+      taskEl.setAttribute("data-block-id", taskBlockId);
       taskEl.setAttribute("data-debug", "false");
       taskEl.className = "block";
     } catch {
@@ -138,7 +145,7 @@ export function WatchTab() {
       taskEl.appendChild(node);
     };
 
-    addSlot("reward", `+${s.adTask.reward} ROSE`, "text-[11px] text-rose-gold font-semibold");
+    addSlot("reward", `+${taskReward} ROSE`, "text-[11px] text-rose-gold font-semibold");
     addSlot("button", "Start Task Ad", "px-4 py-2 rounded-xl gradient-cyan text-white text-sm font-bold");
     addSlot(
       "claim",
@@ -155,7 +162,7 @@ export function WatchTab() {
       if (busyRef.current) return;
       setBusy("task");
       try {
-        const res = await adTask({ data: { initData: tg.initData, blockId: s.adTask.blockId } });
+        const res = await adTask({ data: { initData: tg.initData, blockId: taskBlockId } });
         if (!res.ok) throw new Error("Ad task failed");
         tg.haptic("success");
         toast.success(`🌹 +${res.amount} ROSE!`);
