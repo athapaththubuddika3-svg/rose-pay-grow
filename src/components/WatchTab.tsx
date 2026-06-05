@@ -13,6 +13,32 @@ import {
   claimDailyBonus,
 } from "@/lib/api.functions";
 
+type EarnStats = {
+  ads?: {
+    dailyCount?: number;
+    dailyLimit?: number;
+    sessionCount?: number;
+    sessionLimit?: number;
+    sessionRemainMs?: number;
+    reward?: number;
+    blockId?: string;
+  };
+  adTask?: {
+    count?: number;
+    limit?: number;
+    cooldownRemainMs?: number;
+    reward?: number;
+    blockId?: string;
+    ctaBotLink?: string;
+    ctaChannelLink?: string;
+  };
+  bonus?: {
+    ready?: boolean;
+    remainMs?: number;
+    amount?: number;
+  };
+};
+
 function fmtMs(ms: number) {
   if (ms <= 0) return "ready";
   const s = Math.ceil(ms / 1000);
@@ -31,7 +57,7 @@ export function WatchTab() {
   const watch = useServerFn(completeAdWatch);
   const adTask = useServerFn(completeAdTask);
   const dailyBonus = useServerFn(claimDailyBonus);
-  const [s, setS] = useState<any>(null);
+  const [s, setS] = useState<EarnStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const busyRef = useRef<string | null>(null);
@@ -43,8 +69,8 @@ export function WatchTab() {
 
   const reload = async () => {
     try {
-      const r = await fetchStats({ data: { initData: tg.initData } });
-      setS(r);
+      const r = (await fetchStats({ data: { initData: tg.initData } })) as EarnStats;
+      setS(r ?? {});
     } catch (e: any) {
       toast.error(e.message);
     } finally {
@@ -90,13 +116,19 @@ export function WatchTab() {
 
   useEffect(() => {
     if (!ads.taskReady || !taskMountRef.current || !s?.adTask?.blockId) return;
+    if (!window.customElements?.get("adsgram-task")) return;
     const mount = taskMountRef.current;
     mount.replaceChildren();
 
-    const taskEl = document.createElement("adsgram-task");
-    taskEl.setAttribute("data-block-id", s.adTask.blockId);
-    taskEl.setAttribute("data-debug", "false");
-    taskEl.className = "block";
+    let taskEl: HTMLElement;
+    try {
+      taskEl = document.createElement("adsgram-task");
+      taskEl.setAttribute("data-block-id", s.adTask.blockId);
+      taskEl.setAttribute("data-debug", "false");
+      taskEl.className = "block";
+    } catch {
+      return;
+    }
 
     const addSlot = (slot: string, text: string, className: string) => {
       const node = document.createElement("div");
@@ -136,13 +168,23 @@ export function WatchTab() {
       }
     };
     const onError = () => toast.error("Ad task failed to load");
-    taskEl.addEventListener("reward", onReward as EventListener);
-    taskEl.addEventListener("onError", onError as EventListener);
-    mount.appendChild(taskEl);
+    try {
+      taskEl.addEventListener("reward", onReward as EventListener);
+      taskEl.addEventListener("onError", onError as EventListener);
+      taskEl.addEventListener("onBannerNotFound", onError as EventListener);
+      mount.appendChild(taskEl);
+    } catch {
+      taskEl.removeEventListener("reward", onReward as EventListener);
+      taskEl.removeEventListener("onError", onError as EventListener);
+      taskEl.removeEventListener("onBannerNotFound", onError as EventListener);
+      mount.replaceChildren();
+      return;
+    }
 
     return () => {
       taskEl.removeEventListener("reward", onReward as EventListener);
       taskEl.removeEventListener("onError", onError as EventListener);
+      taskEl.removeEventListener("onBannerNotFound", onError as EventListener);
       taskEl.remove();
     };
   }, [ads.taskReady, adTask, s?.adTask?.blockId, s?.adTask?.reward, tg]);
@@ -164,9 +206,18 @@ export function WatchTab() {
     }
   };
 
-  const dailyPct = Math.min(100, (s.ads.dailyCount / s.ads.dailyLimit) * 100);
-  const sessionPct = Math.min(100, (s.ads.sessionCount / s.ads.sessionLimit) * 100);
-  const taskPct = Math.min(100, (s.adTask.count / s.adTask.limit) * 100);
+  const adsState = s?.ads ?? {};
+  const adTaskState = s?.adTask ?? {};
+  const bonusState = s?.bonus ?? {};
+  const dailyCount = Number(adsState.dailyCount ?? 0);
+  const dailyLimit = Math.max(1, Number(adsState.dailyLimit ?? 1));
+  const sessionCount = Number(adsState.sessionCount ?? 0);
+  const sessionLimit = Math.max(1, Number(adsState.sessionLimit ?? 1));
+  const taskCount = Number(adTaskState.count ?? 0);
+  const taskLimit = Math.max(1, Number(adTaskState.limit ?? 1));
+  const dailyPct = Math.min(100, (dailyCount / dailyLimit) * 100);
+  const sessionPct = Math.min(100, (sessionCount / sessionLimit) * 100);
+  const taskPct = Math.min(100, (taskCount / taskLimit) * 100);
 
   return (
     <div className="px-4 pt-4 pb-28 space-y-4">
@@ -190,21 +241,21 @@ export function WatchTab() {
           <div className="flex-1">
             <p className="font-semibold">Daily Bonus</p>
             <div className="flex items-center gap-1 text-xs text-rose-gold">
-              <RoseCoin size={12} /> +{s.bonus.amount} ROSE
+              <RoseCoin size={12} /> +{Number(bonusState.amount ?? 0)} ROSE
             </div>
           </div>
           <button
-            disabled={!s.bonus.ready || busy === "bonus"}
+            disabled={!bonusState.ready || busy === "bonus"}
             onClick={handleBonus}
             className="px-4 py-2 rounded-xl gradient-gold text-white text-sm font-bold disabled:opacity-50 flex items-center gap-1"
           >
             {busy === "bonus" ? (
               <Loader2 className="w-4 h-4 animate-spin" />
-            ) : s.bonus.ready ? (
+            ) : bonusState.ready ? (
               "Claim"
             ) : (
               <>
-                <Clock className="w-3 h-3" /> {fmtMs(s.bonus.remainMs)}
+                <Clock className="w-3 h-3" /> {fmtMs(Number(bonusState.remainMs ?? 0))}
               </>
             )}
           </button>
@@ -226,22 +277,20 @@ export function WatchTab() {
           <div className="flex-1">
             <p className="font-semibold">Watch Ad</p>
             <div className="flex items-center gap-1 text-xs">
-              <RoseCoin size={12} /> <span className="text-rose-gold">+{s.ads.reward} per ad</span>
+              <RoseCoin size={12} /> <span className="text-rose-gold">+{Number(adsState.reward ?? 0)} per ad</span>
             </div>
           </div>
         </div>
         <button
-          disabled={
-            busy === "ad" || s.ads.sessionRemainMs > 0 || s.ads.dailyCount >= s.ads.dailyLimit
-          }
+          disabled={busy === "ad" || Number(adsState.sessionRemainMs ?? 0) > 0 || dailyCount >= dailyLimit}
           onClick={handleWatch}
           className="w-full mt-4 py-3 rounded-xl gradient-pink text-white font-bold disabled:opacity-50 flex items-center justify-center gap-2 relative"
         >
           {busy === "ad" ? (
             <Loader2 className="w-4 h-4 animate-spin" />
-          ) : s.ads.sessionRemainMs > 0 ? (
-            `Cooldown ${fmtMs(s.ads.sessionRemainMs)}`
-          ) : s.ads.dailyCount >= s.ads.dailyLimit ? (
+          ) : Number(adsState.sessionRemainMs ?? 0) > 0 ? (
+            `Cooldown ${fmtMs(Number(adsState.sessionRemainMs ?? 0))}`
+          ) : dailyCount >= dailyLimit ? (
             "Daily limit reached"
           ) : (
             "▶ Watch Ad"
@@ -252,7 +301,7 @@ export function WatchTab() {
             <div className="flex justify-between mb-1">
               <span className="text-muted-foreground">Daily</span>
               <span>
-                {s.ads.dailyCount}/{s.ads.dailyLimit}
+                {dailyCount}/{dailyLimit}
               </span>
             </div>
             <div className="h-1.5 bg-input rounded-full overflow-hidden">
@@ -267,7 +316,7 @@ export function WatchTab() {
             <div className="flex justify-between mb-1">
               <span className="text-muted-foreground">Session</span>
               <span>
-                {s.ads.sessionCount}/{s.ads.sessionLimit}
+                {sessionCount}/{sessionLimit}
               </span>
             </div>
             <div className="h-1.5 bg-input rounded-full overflow-hidden">
@@ -297,20 +346,20 @@ export function WatchTab() {
             <p className="font-semibold">Ad Task</p>
             <div className="flex items-center gap-1 text-xs">
               <RoseCoin size={12} />{" "}
-              <span className="text-rose-gold">+{s.adTask.reward} per task</span>
+              <span className="text-rose-gold">+{Number(adTaskState.reward ?? 0)} per task</span>
             </div>
           </div>
           <div className="flex flex-col items-end gap-2">
-            {s.adTask.cooldownRemainMs > 0 ? (
+            {Number(adTaskState.cooldownRemainMs ?? 0) > 0 ? (
               <span className="text-xs text-muted-foreground">
-                Cooldown {fmtMs(s.adTask.cooldownRemainMs)}
+                Cooldown {fmtMs(Number(adTaskState.cooldownRemainMs ?? 0))}
               </span>
             ) : null}
-            {s.adTask.count < s.adTask.limit && ads.taskReady ? (
+            {taskCount < taskLimit && ads.taskReady && window.customElements?.get("adsgram-task") ? (
               <div ref={taskMountRef} className="block" />
             ) : (
               <button disabled className="px-4 py-2 rounded-xl gradient-cyan text-white text-sm font-bold disabled:opacity-50">
-                {s.adTask.count >= s.adTask.limit ? "Done" : "Loading task..."}
+                {taskCount >= taskLimit ? "Done" : "Task unavailable"}
               </button>
             )}
           </div>
@@ -319,7 +368,7 @@ export function WatchTab() {
           <div className="flex justify-between mb-1">
             <span className="text-muted-foreground">Today</span>
             <span>
-              {s.adTask.count}/{s.adTask.limit}
+              {taskCount}/{taskLimit}
             </span>
           </div>
           <div className="h-1.5 bg-input rounded-full overflow-hidden">
@@ -330,10 +379,10 @@ export function WatchTab() {
             />
           </div>
           <div className="mt-2 flex gap-2 text-[11px]">
-            <button onClick={() => tg.openTelegramLink(s.adTask.ctaBotLink)} className="text-rose-cyan">
+            <button onClick={() => adTaskState.ctaBotLink && tg.openTelegramLink(adTaskState.ctaBotLink)} className="text-rose-cyan">
               Open bot from ad
             </button>
-            <button onClick={() => tg.openTelegramLink(s.adTask.ctaChannelLink)} className="text-rose-pink">
+            <button onClick={() => adTaskState.ctaChannelLink && tg.openTelegramLink(adTaskState.ctaChannelLink)} className="text-rose-pink">
               Open channel from ad
             </button>
           </div>
