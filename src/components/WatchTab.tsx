@@ -119,83 +119,6 @@ export function WatchTab() {
     }
   };
 
-  useEffect(() => {
-    const taskBlockId = String(s?.adTask?.blockId ?? "");
-    const taskReward = Number(s?.adTask?.reward ?? 0);
-    if (!ads.taskReady || !taskMountRef.current || !taskBlockId) return;
-    if (!window.customElements?.get("adsgram-task")) return;
-    const mount = taskMountRef.current;
-    mount.replaceChildren();
-
-    let taskEl: HTMLElement;
-    try {
-      taskEl = document.createElement("adsgram-task");
-      taskEl.setAttribute("data-block-id", taskBlockId);
-      taskEl.setAttribute("data-debug", "false");
-      taskEl.className = "block";
-    } catch {
-      return;
-    }
-
-    const addSlot = (slot: string, text: string, className: string) => {
-      const node = document.createElement("div");
-      node.slot = slot;
-      node.className = className;
-      node.textContent = text;
-      taskEl.appendChild(node);
-    };
-
-    addSlot("reward", `+${taskReward} ROSE`, "text-[11px] text-rose-gold font-semibold");
-    addSlot("button", "Start Task Ad", "px-4 py-2 rounded-xl gradient-cyan text-white text-sm font-bold");
-    addSlot(
-      "claim",
-      "Claim Task Reward",
-      "px-4 py-2 rounded-xl gradient-cyan text-white text-sm font-bold",
-    );
-    addSlot(
-      "done",
-      "Done",
-      "px-4 py-2 rounded-xl bg-emerald-500/20 text-emerald-300 text-sm font-bold",
-    );
-
-    const onReward = async () => {
-      if (busyRef.current) return;
-      setBusy("task");
-      try {
-        const res = await adTask({ data: { initData: tg.initData, blockId: taskBlockId } });
-        if (!res.ok) throw new Error("Ad task failed");
-        tg.haptic("success");
-        toast.success(`🌹 +${res.amount} ROSE!`);
-        reload();
-      } catch (e: any) {
-        tg.haptic("error");
-        toast.error(e.message);
-      } finally {
-        setBusy(null);
-      }
-    };
-    const onError = () => toast.error("Ad task failed to load");
-    try {
-      taskEl.addEventListener("reward", onReward as EventListener);
-      taskEl.addEventListener("onError", onError as EventListener);
-      taskEl.addEventListener("onBannerNotFound", onError as EventListener);
-      mount.appendChild(taskEl);
-    } catch {
-      taskEl.removeEventListener("reward", onReward as EventListener);
-      taskEl.removeEventListener("onError", onError as EventListener);
-      taskEl.removeEventListener("onBannerNotFound", onError as EventListener);
-      mount.replaceChildren();
-      return;
-    }
-
-    return () => {
-      taskEl.removeEventListener("reward", onReward as EventListener);
-      taskEl.removeEventListener("onError", onError as EventListener);
-      taskEl.removeEventListener("onBannerNotFound", onError as EventListener);
-      taskEl.remove();
-    };
-  }, [ads.taskReady, adTask, s?.adTask?.blockId, s?.adTask?.reward, tg]);
-
   const handleBonus = async () => {
     if (busy) return;
     setBusy("bonus");
@@ -233,41 +156,6 @@ export function WatchTab() {
         Watch ads fully to receive ROSE. During task ads, open the promoted bot or channel from the
         ad and complete it until the reward unlocks.
       </p>
-
-      {/* Daily Bonus */}
-      <motion.div
-        initial={{ y: 10, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        className="glass rounded-2xl p-4 relative overflow-hidden border-rose-gold/40"
-      >
-        <div className="absolute -right-8 -top-8 w-32 h-32 bg-rose-gold/30 rounded-full blur-3xl" />
-        <div className="flex items-center gap-3 relative">
-          <div className="w-12 h-12 rounded-xl gradient-gold flex items-center justify-center">
-            <Gift className="w-6 h-6 text-white" />
-          </div>
-          <div className="flex-1">
-            <p className="font-semibold">Daily Bonus</p>
-            <div className="flex items-center gap-1 text-xs text-rose-gold">
-              <RoseCoin size={12} /> +{Number(bonusState.amount ?? 0)} ROSE
-            </div>
-          </div>
-          <button
-            disabled={!bonusState.ready || busy === "bonus"}
-            onClick={handleBonus}
-            className="px-4 py-2 rounded-xl gradient-gold text-white text-sm font-bold disabled:opacity-50 flex items-center gap-1"
-          >
-            {busy === "bonus" ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : bonusState.ready ? (
-              "Claim"
-            ) : (
-              <>
-                <Clock className="w-3 h-3" /> {fmtMs(Number(bonusState.remainMs ?? 0))}
-              </>
-            )}
-          </button>
-        </div>
-      </motion.div>
 
       {/* Watch Ads */}
       <motion.div
@@ -337,11 +225,47 @@ export function WatchTab() {
         </div>
       </motion.div>
 
-      {/* Ad Task */}
+      {/* Daily Bonus */}
       <motion.div
         initial={{ y: 10, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ delay: 0.1 }}
+        className="glass rounded-2xl p-4 relative overflow-hidden border-rose-gold/40"
+      >
+        <div className="absolute -right-8 -top-8 w-32 h-32 bg-rose-gold/30 rounded-full blur-3xl" />
+        <div className="flex items-center gap-3 relative">
+          <div className="w-12 h-12 rounded-xl gradient-gold flex items-center justify-center">
+            <Gift className="w-6 h-6 text-white" />
+          </div>
+          <div className="flex-1">
+            <p className="font-semibold">Daily Bonus</p>
+            <div className="flex items-center gap-1 text-xs text-rose-gold">
+              <RoseCoin size={12} /> +{Number(bonusState.amount ?? 0)} ROSE
+            </div>
+          </div>
+          <button
+            disabled={!bonusState.ready || busy === "bonus"}
+            onClick={handleBonus}
+            className="px-4 py-2 rounded-xl gradient-gold text-white text-sm font-bold disabled:opacity-50 flex items-center gap-1"
+          >
+            {busy === "bonus" ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : bonusState.ready ? (
+              "Claim"
+            ) : (
+              <>
+                <Clock className="w-3 h-3" /> {fmtMs(Number(bonusState.remainMs ?? 0))}
+              </>
+            )}
+          </button>
+        </div>
+      </motion.div>
+
+      {/* Ad Task */}
+      <motion.div
+        initial={{ y: 10, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ delay: 0.15 }}
         className="glass rounded-2xl p-4 relative overflow-hidden border-rose-cyan/40"
       >
         <div className="absolute -right-8 -top-8 w-32 h-32 bg-rose-cyan/30 rounded-full blur-3xl" />
@@ -352,24 +276,12 @@ export function WatchTab() {
           <div className="flex-1">
             <p className="font-semibold">Ad Task</p>
             <div className="flex items-center gap-1 text-xs">
-              <RoseCoin size={12} />{" "}
-              <span className="text-rose-gold">+{Number(adTaskState.reward ?? 0)} per task</span>
+              <RoseCoin size={12} /> <span className="text-rose-gold">+{Number(adTaskState.reward ?? 0)} per task</span>
             </div>
           </div>
-          <div className="flex flex-col items-end gap-2">
-            {Number(adTaskState.cooldownRemainMs ?? 0) > 0 ? (
-              <span className="text-xs text-muted-foreground">
-                Cooldown {fmtMs(Number(adTaskState.cooldownRemainMs ?? 0))}
-              </span>
-            ) : null}
-            {taskCount < taskLimit && ads.taskReady && window.customElements?.get("adsgram-task") ? (
-              <div ref={taskMountRef} className="block" />
-            ) : (
-              <button disabled className="px-4 py-2 rounded-xl gradient-cyan text-white text-sm font-bold disabled:opacity-50">
-                {taskCount >= taskLimit ? "Done" : "Task unavailable"}
-              </button>
-            )}
-          </div>
+          <button disabled className="px-4 py-2 rounded-xl gradient-cyan text-white text-sm font-bold disabled:opacity-50">
+            Coming soon
+          </button>
         </div>
         <div className="mt-3 text-xs relative">
           <div className="flex justify-between mb-1">
