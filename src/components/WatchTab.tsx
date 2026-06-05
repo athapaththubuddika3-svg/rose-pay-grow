@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { motion } from "framer-motion";
 import { Play, Gift, Zap, Loader2, Clock } from "lucide-react";
@@ -9,7 +9,6 @@ import { RoseCoin } from "./RoseCoin";
 import {
   getEarnStats,
   completeAdWatch,
-  completeAdTask,
   claimDailyBonus,
 } from "@/lib/api.functions";
 
@@ -55,17 +54,10 @@ export function WatchTab() {
   const ads = useAdsgram();
   const fetchStats = useServerFn(getEarnStats);
   const watch = useServerFn(completeAdWatch);
-  const adTask = useServerFn(completeAdTask);
   const dailyBonus = useServerFn(claimDailyBonus);
   const [s, setS] = useState<EarnStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
-  const busyRef = useRef<string | null>(null);
-  const taskMountRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    busyRef.current = busy;
-  }, [busy]);
 
   const reload = async () => {
     try {
