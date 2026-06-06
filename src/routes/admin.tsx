@@ -1052,3 +1052,140 @@ function SettingsView({ token }: { token: string }) {
     </div>
   );
 }
+
+function AdsView({ token }: { token: string }) {
+  const list = useServerFn(adminListAdNetworks);
+  const update = useServerFn(adminUpdateAdNetwork);
+  const [nets, setNets] = useState<any[]>([]);
+  const [edits, setEdits] = useState<Record<string, any>>({});
+  const reload = () => list({ data: { token } }).then((r) => setNets(r.networks));
+  useEffect(() => {
+    reload();
+  }, [token]);
+
+  const set = (key: string, patch: any) =>
+    setEdits((p) => ({ ...p, [key]: { ...(p[key] || {}), ...patch } }));
+
+  const save = async (n: any) => {
+    const e = edits[n.key] || {};
+    const patch: any = { token, key: n.key };
+    if (e.label !== undefined) patch.label = String(e.label);
+    if (e.reward !== undefined) patch.reward = Number(e.reward);
+    if (e.button_count !== undefined) patch.button_count = Number(e.button_count);
+    if (e.cooldown_hours !== undefined) patch.cooldown_hours = Number(e.cooldown_hours);
+    if (e.enabled !== undefined) patch.enabled = !!e.enabled;
+    if (e.coming_soon !== undefined) patch.coming_soon = !!e.coming_soon;
+    if (e.block_ids !== undefined) {
+      patch.block_ids = String(e.block_ids)
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+    }
+    try {
+      await update({ data: patch });
+      toast.success(`${n.label} saved`);
+      setEdits((p) => {
+        const { [n.key]: _, ...rest } = p;
+        return rest;
+      });
+      reload();
+    } catch (err: any) {
+      toast.error(err?.message || "Save failed");
+    }
+  };
+
+  return (
+    <div>
+      <h2 className="text-2xl font-bold mb-4">Manage Ad Networks</h2>
+      <p className="text-xs text-slate-400 mb-4">
+        Reward, button count, cooldown and status per ad network. Block IDs are comma-separated; one
+        is picked at random per watch (Adsgram only).
+      </p>
+      <div className="space-y-3">
+        {nets.map((n) => {
+          const e = edits[n.key] || {};
+          const cur = (k: string, fallback: any) => (e[k] !== undefined ? e[k] : fallback);
+          return (
+            <div key={n.key} className="bg-slate-900 border border-slate-800 rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="px-2 py-1 text-xs rounded bg-pink-500/20 text-pink-300 font-mono">
+                  {n.key}
+                </span>
+                <input
+                  value={cur("label", n.label)}
+                  onChange={(ev) => set(n.key, { label: ev.target.value })}
+                  className="bg-slate-800 rounded px-2 py-1 text-sm font-semibold flex-1"
+                />
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                <label className="flex flex-col gap-1">
+                  <span className="text-slate-400">Reward (ROSE)</span>
+                  <input
+                    type="number"
+                    step="0.0001"
+                    value={cur("reward", n.reward)}
+                    onChange={(ev) => set(n.key, { reward: ev.target.value })}
+                    className="bg-slate-800 rounded px-2 py-1.5"
+                  />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-slate-400">Buttons</span>
+                  <input
+                    type="number"
+                    value={cur("button_count", n.button_count)}
+                    onChange={(ev) => set(n.key, { button_count: ev.target.value })}
+                    className="bg-slate-800 rounded px-2 py-1.5"
+                  />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-slate-400">Cooldown (hours)</span>
+                  <input
+                    type="number"
+                    value={cur("cooldown_hours", n.cooldown_hours)}
+                    onChange={(ev) => set(n.key, { cooldown_hours: ev.target.value })}
+                    className="bg-slate-800 rounded px-2 py-1.5"
+                  />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-slate-400">Block IDs (csv)</span>
+                  <input
+                    value={cur(
+                      "block_ids",
+                      Array.isArray(n.block_ids) ? n.block_ids.join(", ") : "",
+                    )}
+                    onChange={(ev) => set(n.key, { block_ids: ev.target.value })}
+                    className="bg-slate-800 rounded px-2 py-1.5 font-mono"
+                  />
+                </label>
+              </div>
+              <div className="flex flex-wrap items-center gap-4 mt-3 text-xs">
+                <label className="flex items-center gap-1">
+                  <input
+                    type="checkbox"
+                    checked={cur("enabled", n.enabled)}
+                    onChange={(ev) => set(n.key, { enabled: ev.target.checked })}
+                  />
+                  Enabled
+                </label>
+                <label className="flex items-center gap-1">
+                  <input
+                    type="checkbox"
+                    checked={cur("coming_soon", n.coming_soon)}
+                    onChange={(ev) => set(n.key, { coming_soon: ev.target.checked })}
+                  />
+                  Coming soon
+                </label>
+                <button
+                  onClick={() => save(n)}
+                  className="ml-auto px-4 py-1.5 bg-pink-500 rounded text-white font-semibold"
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
