@@ -22,7 +22,10 @@ import {
   adminGetSettings,
   adminSetSetting,
   adminBroadcast,
+  adminListAdNetworks,
+  adminUpdateAdNetwork,
 } from "@/lib/admin.functions";
+
 
 export const Route = createFileRoute("/admin")({
   component: AdminPage,
@@ -139,6 +142,7 @@ type Tab =
   | "dashboard"
   | "users"
   | "tasks"
+  | "ads"
   | "submissions"
   | "withdrawals"
   | "codes"
@@ -151,12 +155,14 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
     { id: "dashboard", label: "Dashboard" },
     { id: "users", label: "Users" },
     { id: "tasks", label: "Tasks" },
+    { id: "ads", label: "Manage Ads" },
     { id: "submissions", label: "Submissions" },
     { id: "withdrawals", label: "Withdrawals" },
     { id: "codes", label: "Reward Codes" },
     { id: "broadcast", label: "Broadcast" },
     { id: "settings", label: "Settings" },
   ];
+
   return (
     <div className="flex flex-col md:flex-row min-h-screen">
       <aside className="md:w-64 bg-slate-900 border-r border-slate-800 p-4">
@@ -185,6 +191,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
         {tab === "dashboard" && <StatsView token={token} />}
         {tab === "users" && <UsersView token={token} />}
         {tab === "tasks" && <TasksView token={token} />}
+        {tab === "ads" && <AdsView token={token} />}
         {tab === "submissions" && <SubmissionsView token={token} />}
         {tab === "withdrawals" && <WithdrawalsView token={token} />}
         {tab === "codes" && <CodesView token={token} />}
@@ -194,6 +201,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
     </div>
   );
 }
+
 
 function StatsView({ token }: { token: string }) {
   const fn = useServerFn(adminStats);
