@@ -1,41 +1,19 @@
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { motion } from "framer-motion";
-import { Play, Gift, Zap, Loader2, Clock } from "lucide-react";
+import { Gift, Loader2, Clock, ChevronRight, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { useTelegram } from "./TelegramProvider";
-import { useAdsgram } from "./AdsgramProvider";
 import { RoseCoin } from "./RoseCoin";
-import {
-  getEarnStats,
-  completeAdWatch,
-  claimDailyBonus,
-} from "@/lib/api.functions";
+import { AdNetworkPanel, type AdNetwork } from "./AdNetworkPanel";
+import { listAdNetworks, claimDailyBonus, getEarnStats } from "@/lib/api.functions";
 
-type EarnStats = {
-  ads?: {
-    dailyCount?: number;
-    dailyLimit?: number;
-    sessionCount?: number;
-    sessionLimit?: number;
-    sessionRemainMs?: number;
-    reward?: number;
-    blockId?: string;
-  };
-  adTask?: {
-    count?: number;
-    limit?: number;
-    cooldownRemainMs?: number;
-    reward?: number;
-    blockId?: string;
-    ctaBotLink?: string;
-    ctaChannelLink?: string;
-  };
-  bonus?: {
-    ready?: boolean;
-    remainMs?: number;
-    amount?: number;
-  };
+const NETWORK_GRADIENT: Record<string, string> = {
+  adsgram: "from-fuchsia-500 to-pink-500",
+  monetag: "from-emerald-400 to-teal-500",
+  monetix: "from-sky-400 to-indigo-500",
+  gigapub: "from-amber-400 to-orange-500",
+  adexium: "from-rose-400 to-red-500",
 };
 
 function fmtMs(ms: number) {
@@ -51,18 +29,31 @@ function fmtMs(ms: number) {
 
 export function WatchTab() {
   const tg = useTelegram();
-  const ads = useAdsgram();
+  const fetchNets = useServerFn(listAdNetworks);
   const fetchStats = useServerFn(getEarnStats);
-  const watch = useServerFn(completeAdWatch);
   const dailyBonus = useServerFn(claimDailyBonus);
-  const [s, setS] = useState<EarnStats | null>(null);
+  const [networks, setNetworks] = useState<AdNetwork[] | null>(null);
+  const [bonus, setBonus] = useState<{ ready: boolean; remainMs: number; amount: number } | null>(
+    null,
+  );
+  const [active, setActive] = useState<AdNetwork | null>(null);
+  const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState<string | null>(null);
 
   const reload = async () => {
     try {
-      const r = (await fetchStats({ data: { initData: tg.initData } })) as EarnStats;
-      setS(r ?? {});
+      const [n, s] = await Promise.all([
+        fetchNets({ data: { initData: tg.initData } }),
+        fetchStats({ data: { initData: tg.initData } }),
+      ]);
+      setNetworks(n.networks as AdNetwork[]);
+      const b = (s as any)?.bonus;
+      if (b) setBonus({ ready: !!b.ready, remainMs: Number(b.remainMs || 0), amount: Number(b.amount || 0) });
+      // Refresh active panel with new slot data
+      if (active) {
+        const next = (n.networks as AdNetwork[]).find((x) => x.key === active.key);
+        if (next) setActive(next);
+      }
     } catch (e: any) {
       toast.error(e.message);
     } finally {
@@ -72,233 +63,157 @@ export function WatchTab() {
 
   useEffect(() => {
     if (tg.ready && tg.initData) reload();
-    const i = setInterval(() => {
-      if (tg.ready) reload();
-    }, 30000);
-    return () => clearInterval(i);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tg.ready, tg.initData]);
 
-  if (loading || !s)
+  const handleBonus = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const res = await dailyBonus({ data: { initData: tg.initData } });
+      if (!res.ok) throw new Error(res.message || "Already claimed");
+      tg.haptic("success");
+      toast.success(`🎁 Daily bonus +${res.amount} ROSE`);
+      reload();
+    } catch (e: any) {
+      tg.haptic("error");
+      toast.error(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (loading || !networks)
     return (
       <div className="flex items-center justify-center py-20">
         <Loader2 className="w-8 h-8 animate-spin text-rose-pink" />
       </div>
     );
 
-  const handleWatch = async () => {
-    if (busy) return;
-    const rewardedBlockId = String(s?.ads?.blockId ?? "");
-    if (!rewardedBlockId) {
-      toast.error("Ad block is not configured");
-      return;
-    }
-    setBusy("ad");
-    try {
-      const r = await ads.showRewarded(rewardedBlockId);
-      if (!r.ok) throw new Error(r.error || "Watch the full ad to earn");
-      const res = await watch({
-        data: { initData: tg.initData, durationSec: r.durationSec, blockId: rewardedBlockId },
-      });
-      if (!res.ok) throw new Error(res.message || "Limit reached");
-      tg.haptic("success");
-      toast.success(`🌹 +${res.amount} ROSE!`);
-      reload();
-    } catch (e: any) {
-      tg.haptic("error");
-      toast.error(e.message);
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const handleBonus = async () => {
-    if (busy) return;
-    setBusy("bonus");
-    try {
-      const res = await dailyBonus({ data: { initData: tg.initData } });
-      if (!res.ok) throw new Error(res.message || "Already claimed");
-      tg.haptic("success");
-      toast.success(`🎁 Daily bonus +${res.amount} ROSE!`);
-      reload();
-    } catch (e: any) {
-      tg.haptic("error");
-      toast.error(e.message);
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const adsState = s?.ads ?? {};
-  const adTaskState = s?.adTask ?? {};
-  const bonusState = s?.bonus ?? {};
-  const dailyCount = Number(adsState.dailyCount ?? 0);
-  const dailyLimit = Math.max(1, Number(adsState.dailyLimit ?? 1));
-  const sessionCount = Number(adsState.sessionCount ?? 0);
-  const sessionLimit = Math.max(1, Number(adsState.sessionLimit ?? 1));
-  const taskCount = Number(adTaskState.count ?? 0);
-  const taskLimit = Math.max(1, Number(adTaskState.limit ?? 1));
-  const dailyPct = Math.min(100, (dailyCount / dailyLimit) * 100);
-  const sessionPct = Math.min(100, (sessionCount / sessionLimit) * 100);
-  const taskPct = Math.min(100, (taskCount / taskLimit) * 100);
-
   return (
-    <div className="px-4 pt-4 pb-28 space-y-4">
+    <div className="px-4 pt-4 pb-28 space-y-3">
       <h2 className="text-xl font-bold neon-text-pink">Watch & Earn</h2>
       <p className="text-xs text-muted-foreground glass rounded-xl p-3">
-        Watch ads fully to receive ROSE. During task ads, open the promoted bot or channel from the
-        ad and complete it until the reward unlocks.
+        Tap any ad network card to open its watch buttons. Each button gives a reward when the ad is
+        fully shown and locks for 12 hours.
       </p>
 
-      {/* Watch Ads */}
-      <motion.div
-        initial={{ y: 10, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ delay: 0.05 }}
-        className="glass rounded-2xl p-5 relative overflow-hidden border-rose-pink/40"
-      >
-        <div className="absolute -right-8 -top-8 w-40 h-40 bg-rose-pink/30 rounded-full blur-3xl" />
-        <div className="flex items-center gap-3 relative">
-          <div className="w-14 h-14 rounded-2xl gradient-pink flex items-center justify-center neon-pink animate-pulse-glow">
-            <Play className="w-7 h-7 text-white" fill="white" />
-          </div>
-          <div className="flex-1">
-            <p className="font-semibold">Watch Ad</p>
-            <div className="flex items-center gap-1 text-xs">
-              <RoseCoin size={12} /> <span className="text-rose-gold">+{Number(adsState.reward ?? 0)} per ad</span>
-            </div>
-          </div>
-        </div>
-        <button
-          disabled={busy === "ad" || Number(adsState.sessionRemainMs ?? 0) > 0 || dailyCount >= dailyLimit}
-          onClick={handleWatch}
-          className="w-full mt-4 py-3 rounded-xl gradient-pink text-white font-bold disabled:opacity-50 flex items-center justify-center gap-2 relative"
-        >
-          {busy === "ad" ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : Number(adsState.sessionRemainMs ?? 0) > 0 ? (
-            `Cooldown ${fmtMs(Number(adsState.sessionRemainMs ?? 0))}`
-          ) : dailyCount >= dailyLimit ? (
-            "Daily limit reached"
-          ) : (
-            "▶ Watch Ad"
-          )}
-        </button>
-        <div className="mt-3 space-y-2 text-xs relative">
-          <div>
-            <div className="flex justify-between mb-1">
-              <span className="text-muted-foreground">Daily</span>
-              <span>
-                {dailyCount}/{dailyLimit}
-              </span>
-            </div>
-            <div className="h-1.5 bg-input rounded-full overflow-hidden">
-              <motion.div
-                className="h-full gradient-pink"
-                initial={{ width: 0 }}
-                animate={{ width: `${dailyPct}%` }}
-              />
-            </div>
-          </div>
-          <div>
-            <div className="flex justify-between mb-1">
-              <span className="text-muted-foreground">Session</span>
-              <span>
-                {sessionCount}/{sessionLimit}
-              </span>
-            </div>
-            <div className="h-1.5 bg-input rounded-full overflow-hidden">
-              <motion.div
-                className="h-full gradient-purple"
-                initial={{ width: 0 }}
-                animate={{ width: `${sessionPct}%` }}
-              />
-            </div>
-          </div>
-        </div>
-      </motion.div>
-
       {/* Daily Bonus */}
-      <motion.div
-        initial={{ y: 10, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ delay: 0.1 }}
-        className="glass rounded-2xl p-4 relative overflow-hidden border-rose-gold/40"
-      >
-        <div className="absolute -right-8 -top-8 w-32 h-32 bg-rose-gold/30 rounded-full blur-3xl" />
-        <div className="flex items-center gap-3 relative">
-          <div className="w-12 h-12 rounded-xl gradient-gold flex items-center justify-center">
-            <Gift className="w-6 h-6 text-white" />
-          </div>
-          <div className="flex-1">
-            <p className="font-semibold">Daily Bonus</p>
-            <div className="flex items-center gap-1 text-xs text-rose-gold">
-              <RoseCoin size={12} /> +{Number(bonusState.amount ?? 0)} ROSE
+      {bonus && (
+        <motion.div
+          initial={{ y: 6, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          className="glass rounded-2xl p-4 relative overflow-hidden border-rose-gold/40"
+        >
+          <div className="absolute -right-8 -top-8 w-32 h-32 bg-rose-gold/30 rounded-full blur-3xl" />
+          <div className="flex items-center gap-3 relative">
+            <div className="w-12 h-12 rounded-xl gradient-gold flex items-center justify-center">
+              <Gift className="w-6 h-6 text-white" />
             </div>
+            <div className="flex-1">
+              <p className="font-semibold">Daily Bonus</p>
+              <div className="flex items-center gap-1 text-xs text-rose-gold">
+                <RoseCoin size={12} /> +{bonus.amount} ROSE
+              </div>
+            </div>
+            <button
+              disabled={!bonus.ready || busy}
+              onClick={handleBonus}
+              className="px-4 py-2 rounded-xl gradient-gold text-white text-sm font-bold disabled:opacity-50 flex items-center gap-1"
+            >
+              {busy ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : bonus.ready ? (
+                "Claim"
+              ) : (
+                <>
+                  <Clock className="w-3 h-3" /> {fmtMs(bonus.remainMs)}
+                </>
+              )}
+            </button>
           </div>
-          <button
-            disabled={!bonusState.ready || busy === "bonus"}
-            onClick={handleBonus}
-            className="px-4 py-2 rounded-xl gradient-gold text-white text-sm font-bold disabled:opacity-50 flex items-center gap-1"
-          >
-            {busy === "bonus" ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : bonusState.ready ? (
-              "Claim"
-            ) : (
-              <>
-                <Clock className="w-3 h-3" /> {fmtMs(Number(bonusState.remainMs ?? 0))}
-              </>
-            )}
-          </button>
-        </div>
-      </motion.div>
+        </motion.div>
+      )}
 
-      {/* Ad Task */}
-      <motion.div
-        initial={{ y: 10, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ delay: 0.15 }}
-        className="glass rounded-2xl p-4 relative overflow-hidden border-rose-cyan/40"
-      >
-        <div className="absolute -right-8 -top-8 w-32 h-32 bg-rose-cyan/30 rounded-full blur-3xl" />
-        <div className="flex items-center gap-3 relative">
-          <div className="w-12 h-12 rounded-xl gradient-cyan flex items-center justify-center">
-            <Zap className="w-6 h-6 text-white" />
-          </div>
-          <div className="flex-1">
-            <p className="font-semibold">Ad Task</p>
-            <div className="flex items-center gap-1 text-xs">
-              <RoseCoin size={12} /> <span className="text-rose-gold">+{Number(adTaskState.reward ?? 0)} per task</span>
-            </div>
-          </div>
-          <button disabled className="px-4 py-2 rounded-xl gradient-cyan text-white text-sm font-bold disabled:opacity-50">
-            Coming soon
-          </button>
-        </div>
-        <div className="mt-3 text-xs relative">
-          <div className="flex justify-between mb-1">
-            <span className="text-muted-foreground">Today</span>
-            <span>
-              {taskCount}/{taskLimit}
-            </span>
-          </div>
-          <div className="h-1.5 bg-input rounded-full overflow-hidden">
-            <motion.div
-              className="h-full gradient-cyan"
-              initial={{ width: 0 }}
-              animate={{ width: `${taskPct}%` }}
+      {/* Ad Network cards */}
+      {networks.map((n, i) => {
+        const grad = NETWORK_GRADIENT[n.key] || "from-rose-pink to-rose-gold";
+        const isComing = n.coming_soon || !n.enabled;
+        const available = n.slots.filter((s) => s.nextAvailableMs <= 0).length;
+        const pct = n.button_count ? (available / n.button_count) * 100 : 0;
+        return (
+          <motion.button
+            key={n.key}
+            initial={{ y: 8, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 0.05 * (i + 1) }}
+            disabled={isComing}
+            onClick={() => !isComing && setActive(n)}
+            className={`w-full text-left glass rounded-2xl p-4 relative overflow-hidden border ${
+              isComing ? "border-border/30 opacity-70" : "border-rose-pink/30 active:border-rose-pink"
+            }`}
+          >
+            <div
+              className={`absolute -right-10 -top-10 w-40 h-40 bg-gradient-to-br ${grad} opacity-20 rounded-full blur-3xl`}
             />
-          </div>
-          <div className="mt-2 flex gap-2 text-[11px]">
-            <button onClick={() => adTaskState.ctaBotLink && tg.openTelegramLink(adTaskState.ctaBotLink)} className="text-rose-cyan">
-              Open bot from ad
-            </button>
-            <button onClick={() => adTaskState.ctaChannelLink && tg.openTelegramLink(adTaskState.ctaChannelLink)} className="text-rose-pink">
-              Open channel from ad
-            </button>
-          </div>
-        </div>
-      </motion.div>
+            <div className="flex items-center gap-3 relative">
+              <div
+                className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${grad} flex items-center justify-center text-white font-bold text-lg shadow-lg`}
+              >
+                {n.label[0]}
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <p className="font-semibold">{n.label}</p>
+                  {isComing && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-gold/20 text-rose-gold">
+                      Coming soon
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 text-[11px] text-muted-foreground mt-0.5">
+                  <span className="flex items-center gap-0.5 text-rose-gold">
+                    <Sparkles className="w-3 h-3" />+{n.reward}
+                  </span>
+                  <span>·</span>
+                  <span>{n.button_count} buttons</span>
+                  <span>·</span>
+                  <span>12h cooldown</span>
+                </div>
+              </div>
+              {!isComing && <ChevronRight className="w-5 h-5 text-muted-foreground" />}
+            </div>
+            {!isComing && (
+              <div className="mt-3 relative">
+                <div className="flex justify-between text-[10px] mb-1">
+                  <span className="text-muted-foreground">Available now</span>
+                  <span className="font-semibold">
+                    {available}/{n.button_count}
+                  </span>
+                </div>
+                <div className="h-1.5 bg-input rounded-full overflow-hidden">
+                  <motion.div
+                    className={`h-full bg-gradient-to-r ${grad}`}
+                    initial={{ width: 0 }}
+                    animate={{ width: `${pct}%` }}
+                  />
+                </div>
+              </div>
+            )}
+          </motion.button>
+        );
+      })}
+
+      {active && (
+        <AdNetworkPanel
+          network={active}
+          onClose={() => {
+            setActive(null);
+            reload();
+          }}
+          onClaimed={reload}
+        />
+      )}
     </div>
   );
 }
