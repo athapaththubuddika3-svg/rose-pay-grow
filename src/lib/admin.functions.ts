@@ -610,3 +610,52 @@ export const adminBroadcast = createServerFn({ method: "POST" })
     });
     return { ok: true, sent, failed };
   });
+
+// === Ad Networks (admin) ===
+export const adminListAdNetworks = createServerFn({ method: "POST" })
+  .inputValidator((d: { token: string }) => z.object({ token: z.string() }).parse(d))
+  .handler(async ({ data }) => {
+    const { sb } = await requireAdmin(data.token);
+    const { data: list } = await sb
+      .from("ad_networks")
+      .select("*")
+      .order("sort_order", { ascending: true });
+    return { networks: list || [] };
+  });
+
+export const adminUpdateAdNetwork = createServerFn({ method: "POST" })
+  .inputValidator(
+    (d: {
+      token: string;
+      key: string;
+      label?: string;
+      reward?: number;
+      button_count?: number;
+      enabled?: boolean;
+      coming_soon?: boolean;
+      cooldown_hours?: number;
+      block_ids?: string[];
+      sort_order?: number;
+    }) =>
+      z
+        .object({
+          token: z.string(),
+          key: z.string().min(1).max(32),
+          label: z.string().min(1).max(64).optional(),
+          reward: z.number().min(0).optional(),
+          button_count: z.number().int().min(0).max(100).optional(),
+          enabled: z.boolean().optional(),
+          coming_soon: z.boolean().optional(),
+          cooldown_hours: z.number().int().min(0).max(168).optional(),
+          block_ids: z.array(z.string().min(1).max(64)).max(10).optional(),
+          sort_order: z.number().int().optional(),
+        })
+        .parse(d),
+  )
+  .handler(async ({ data }) => {
+    const { sb } = await requireAdmin(data.token);
+    const { token, key, ...patch } = data as any;
+    const upd: any = { ...patch, updated_at: new Date().toISOString() };
+    await sb.from("ad_networks").update(upd).eq("key", key);
+    return { ok: true };
+  });
