@@ -14,6 +14,80 @@ export type Database = {
   }
   public: {
     Tables: {
+      ad_button_watches: {
+        Row: {
+          id: string
+          network: string
+          reward: number
+          slot: number
+          user_id: string
+          watched_at: string
+        }
+        Insert: {
+          id?: string
+          network: string
+          reward: number
+          slot: number
+          user_id: string
+          watched_at?: string
+        }
+        Update: {
+          id?: string
+          network?: string
+          reward?: number
+          slot?: number
+          user_id?: string
+          watched_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ad_button_watches_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "app_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ad_networks: {
+        Row: {
+          block_ids: Json
+          button_count: number
+          coming_soon: boolean
+          cooldown_hours: number
+          enabled: boolean
+          key: string
+          label: string
+          reward: number
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          block_ids?: Json
+          button_count?: number
+          coming_soon?: boolean
+          cooldown_hours?: number
+          enabled?: boolean
+          key: string
+          label: string
+          reward?: number
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          block_ids?: Json
+          button_count?: number
+          coming_soon?: boolean
+          cooldown_hours?: number
+          enabled?: boolean
+          key?: string
+          label?: string
+          reward?: number
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       ad_task_completions: {
         Row: {
           completed_at: string
