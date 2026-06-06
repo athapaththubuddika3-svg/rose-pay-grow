@@ -308,6 +308,50 @@ export function AdsgramProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Direct on-demand Adsgram rewarded show (any blockId, no candidate rewrites)
+  const showAdsgramBlock = useCallback(async (blockId: string) => {
+    if (!blockId) return { ok: false, error: "No block id" };
+    const loaded = await loadSdk();
+    if (!loaded || !window.Adsgram) return { ok: false, error: "Adsgram SDK not loaded" };
+    try {
+      const c = window.Adsgram.init({ blockId });
+      const r = await c.show();
+      if (r?.error) return { ok: false, error: r.description || "Ad error" };
+      const ok = r?.done === true || r?.state === "load" || r?.state === "completed";
+      if (!ok) return { ok: false, error: r?.description || "Ad closed early" };
+      return { ok: true };
+    } catch (e: any) {
+      return { ok: false, error: e?.message || "Ad failed" };
+    }
+  }, []);
+
+  const showMonetag = useCallback(async () => {
+    const loaded = await loadMonetagSdk();
+    if (!loaded || typeof window.show_11012677 !== "function") {
+      return { ok: false, error: "Monetag SDK not loaded" };
+    }
+    try {
+      await window.show_11012677();
+      return { ok: true };
+    } catch (e: any) {
+      return { ok: false, error: e?.message || "Monetag ad failed" };
+    }
+  }, []);
+
+  const showGigaPub = useCallback(async () => {
+    const loaded = await loadGigaPubSdk();
+    if (!loaded || typeof window.showGiga !== "function") {
+      return { ok: false, error: "GigaPub SDK not loaded" };
+    }
+    try {
+      await window.showGiga();
+      return { ok: true };
+    } catch (e: any) {
+      return { ok: false, error: e?.message || "GigaPub ad failed" };
+    }
+  }, []);
+
+
   // Auto interstitials: random 2-5s after open, then random 40-70s repeatedly
   useEffect(() => {
     if (!ready || !tg.ready) return;
@@ -345,7 +389,11 @@ export function AdsgramProvider({ children }: { children: ReactNode }) {
         showTask: (blockId) => showAd(blockId, "task"),
         showInterstitial: (blockId) => showAd(blockId, "interstitial"),
         openMonetagReward,
+        showAdsgramBlock,
+        showMonetag,
+        showGigaPub,
         taskReady,
+
         taskBlockId,
       }}
     >
