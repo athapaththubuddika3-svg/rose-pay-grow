@@ -176,6 +176,35 @@ function loadTaskElement(): Promise<boolean> {
   });
 }
 
+function loadGigaPubSdk(): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (typeof window === "undefined") return resolve(false);
+    if (typeof window.showGiga === "function") return resolve(true);
+    const exists = document.querySelector('script[data-gigapub="1"]');
+    if (exists) {
+      const wait = setInterval(() => {
+        if (typeof window.showGiga === "function") {
+          clearInterval(wait);
+          resolve(true);
+        }
+      }, 200);
+      setTimeout(() => {
+        clearInterval(wait);
+        resolve(typeof window.showGiga === "function");
+      }, 5000);
+      return;
+    }
+    const s = document.createElement("script");
+    s.src = "https://ad.gigapub.tech/script?id=6899";
+    s.async = true;
+    s.dataset.gigapub = "1";
+    s.onload = () => resolve(typeof window.showGiga === "function");
+    s.onerror = () => resolve(false);
+    document.head.appendChild(s);
+  });
+}
+
+
 export function AdsgramProvider({ children }: { children: ReactNode }) {
   const tg = useTelegram();
   const recordAuto = useServerFn(recordAutoAd);
@@ -188,7 +217,9 @@ export function AdsgramProvider({ children }: { children: ReactNode }) {
     loadSdk().then(setReady);
     loadTaskElement().then(setTaskReady);
     loadMonetagSdk();
+    loadGigaPubSdk();
   }, []);
+
 
   const getController = useCallback((blockId: string): AdController | null => {
     if (!window.Adsgram) return null;
