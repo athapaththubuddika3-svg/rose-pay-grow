@@ -18,6 +18,7 @@ declare global {
       init: (opts: { blockId: string }) => AdController;
     };
     show_11012677?: (opts?: any) => Promise<any>;
+    showGiga?: () => Promise<any>;
   }
 
   namespace JSX {
@@ -34,6 +35,7 @@ declare global {
   }
 }
 
+
 interface AdController {
   show: () => Promise<{ done: boolean; description?: string; state?: string; error?: boolean }>;
   destroy?: () => void;
@@ -48,9 +50,13 @@ interface Ctx {
     blockId: string,
   ) => Promise<{ ok: boolean; durationSec: number; error?: string }>;
   openMonetagReward: (requestVar?: string) => Promise<{ ok: boolean; rewardGranted: boolean; error?: string }>;
+  showAdsgramBlock: (blockId: string) => Promise<{ ok: boolean; error?: string }>;
+  showMonetag: () => Promise<{ ok: boolean; error?: string }>;
+  showGigaPub: () => Promise<{ ok: boolean; error?: string }>;
   taskReady: boolean;
   taskBlockId: string;
 }
+
 
 const AdsCtx = createContext<Ctx | null>(null);
 
@@ -170,6 +176,35 @@ function loadTaskElement(): Promise<boolean> {
   });
 }
 
+function loadGigaPubSdk(): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (typeof window === "undefined") return resolve(false);
+    if (typeof window.showGiga === "function") return resolve(true);
+    const exists = document.querySelector('script[data-gigapub="1"]');
+    if (exists) {
+      const wait = setInterval(() => {
+        if (typeof window.showGiga === "function") {
+          clearInterval(wait);
+          resolve(true);
+        }
+      }, 200);
+      setTimeout(() => {
+        clearInterval(wait);
+        resolve(typeof window.showGiga === "function");
+      }, 5000);
+      return;
+    }
+    const s = document.createElement("script");
+    s.src = "https://ad.gigapub.tech/script?id=6899";
+    s.async = true;
+    s.dataset.gigapub = "1";
+    s.onload = () => resolve(typeof window.showGiga === "function");
+    s.onerror = () => resolve(false);
+    document.head.appendChild(s);
+  });
+}
+
+
 export function AdsgramProvider({ children }: { children: ReactNode }) {
   const tg = useTelegram();
   const recordAuto = useServerFn(recordAutoAd);
@@ -182,7 +217,9 @@ export function AdsgramProvider({ children }: { children: ReactNode }) {
     loadSdk().then(setReady);
     loadTaskElement().then(setTaskReady);
     loadMonetagSdk();
+    loadGigaPubSdk();
   }, []);
+
 
   const getController = useCallback((blockId: string): AdController | null => {
     if (!window.Adsgram) return null;
@@ -271,6 +308,50 @@ export function AdsgramProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Direct on-demand Adsgram rewarded show (any blockId, no candidate rewrites)
+  const showAdsgramBlock = useCallback(async (blockId: string) => {
+    if (!blockId) return { ok: false, error: "No block id" };
+    const loaded = await loadSdk();
+    if (!loaded || !window.Adsgram) return { ok: false, error: "Adsgram SDK not loaded" };
+    try {
+      const c = window.Adsgram.init({ blockId });
+      const r = await c.show();
+      if (r?.error) return { ok: false, error: r.description || "Ad error" };
+      const ok = r?.done === true || r?.state === "load" || r?.state === "completed";
+      if (!ok) return { ok: false, error: r?.description || "Ad closed early" };
+      return { ok: true };
+    } catch (e: any) {
+      return { ok: false, error: e?.message || "Ad failed" };
+    }
+  }, []);
+
+  const showMonetag = useCallback(async () => {
+    const loaded = await loadMonetagSdk();
+    if (!loaded || typeof window.show_11012677 !== "function") {
+      return { ok: false, error: "Monetag SDK not loaded" };
+    }
+    try {
+      await window.show_11012677();
+      return { ok: true };
+    } catch (e: any) {
+      return { ok: false, error: e?.message || "Monetag ad failed" };
+    }
+  }, []);
+
+  const showGigaPub = useCallback(async () => {
+    const loaded = await loadGigaPubSdk();
+    if (!loaded || typeof window.showGiga !== "function") {
+      return { ok: false, error: "GigaPub SDK not loaded" };
+    }
+    try {
+      await window.showGiga();
+      return { ok: true };
+    } catch (e: any) {
+      return { ok: false, error: e?.message || "GigaPub ad failed" };
+    }
+  }, []);
+
+
   // Auto interstitials: random 2-5s after open, then random 40-70s repeatedly
   useEffect(() => {
     if (!ready || !tg.ready) return;
@@ -308,7 +389,11 @@ export function AdsgramProvider({ children }: { children: ReactNode }) {
         showTask: (blockId) => showAd(blockId, "task"),
         showInterstitial: (blockId) => showAd(blockId, "interstitial"),
         openMonetagReward,
+        showAdsgramBlock,
+        showMonetag,
+        showGigaPub,
         taskReady,
+
         taskBlockId,
       }}
     >

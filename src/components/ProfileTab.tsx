@@ -7,7 +7,42 @@ import { useTelegram } from "./TelegramProvider";
 import { RoseCoin } from "./RoseCoin";
 import { getMe, requestWithdraw, getWithdrawals } from "@/lib/api.functions";
 
+function ReqBar({
+  label,
+  cur,
+  need,
+  unit,
+  digits = 0,
+}: {
+  label: string;
+  cur: number;
+  need: number;
+  unit?: string;
+  digits?: number;
+}) {
+  const ok = cur >= need;
+  const pct = Math.max(0, Math.min(100, (cur / Math.max(1, need)) * 100));
+  return (
+    <div>
+      <div className="flex justify-between text-[11px] mb-1">
+        <span className="text-muted-foreground">{label}</span>
+        <span className={ok ? "text-emerald-300 font-semibold" : "text-rose-pink font-semibold"}>
+          {Number(cur).toFixed(digits)}/{need}
+          {unit ? ` ${unit}` : ""} {ok ? "✓" : ""}
+        </span>
+      </div>
+      <div className="h-1.5 bg-input rounded-full overflow-hidden">
+        <div
+          className={`h-full ${ok ? "bg-gradient-to-r from-emerald-400 to-emerald-600" : "gradient-pink"}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
 export function ProfileTab() {
+
   const tg = useTelegram();
   const fetchMe = useServerFn(getMe);
   const submit = useServerFn(requestWithdraw);
@@ -151,22 +186,34 @@ export function ProfileTab() {
         </button>
       </div>
 
-      <div className="text-xs text-muted-foreground glass rounded-xl p-3 space-y-1">
-        <p>Requirements:</p>
-        <p>
-          • Min withdraw: {minWd} ROSE {Number(u.balance) >= minWd ? "✅" : "❌"}
+      {/* Withdraw requirements */}
+      <div className="glass rounded-2xl p-4 space-y-3 border border-rose-pink/20">
+        <p className="text-sm font-semibold flex items-center gap-2">
+          <Wallet className="w-4 h-4 text-rose-pink" /> Withdraw Requirements
         </p>
-        <p>• Max withdraw: {maxWd} ROSE</p>
-        <p>• Fee: {fee} ROSE</p>
-        <p>
-          • Min refs: {minRefs} ({u.total_ref_count}) {u.total_ref_count >= minRefs ? "✅" : "❌"}
+
+        <ReqBar label="Balance" cur={Number(u.balance)} need={minWd} unit="ROSE" digits={4} />
+        <ReqBar label="Referrals" cur={u.total_ref_count} need={minRefs} />
+        <ReqBar label="Ads watched today" cur={u.total_ads} need={minAds} />
+
+        <div className="grid grid-cols-2 gap-2 text-[11px] pt-1">
+          <div className="rounded-lg bg-input/40 px-2 py-1.5">
+            <p className="text-muted-foreground">Max / request</p>
+            <p className="font-semibold">{maxWd} ROSE</p>
+          </div>
+          <div className="rounded-lg bg-input/40 px-2 py-1.5">
+            <p className="text-muted-foreground">Fee</p>
+            <p className="font-semibold">{fee} ROSE</p>
+          </div>
+        </div>
+        <p className="text-[11px] text-muted-foreground">
+          • All Main + Partner tasks must be approved
         </p>
-        <p>
-          • Daily ads: {minAds} ({u.total_ads}) {u.total_ads >= minAds ? "✅" : "❌"}
-        </p>
-        <p>• All Main + Partner tasks must be approved before withdraw</p>
-        {hasPendingWithdraw && <p>• Pending withdraw request exists ❌</p>}
+        {hasPendingWithdraw && (
+          <p className="text-[11px] text-amber-300">• Pending withdrawal request exists</p>
+        )}
       </div>
+
 
       {/* Withdraw modal */}
       {showWd && (

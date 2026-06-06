@@ -1,87 +1,101 @@
-# RosePayFi Telegram Mini App — Build Plan
+## Watch Tab Rework + Admin Ad Manager
 
-A full Telegram Mini App with a Rose-themed neon UI, backed by Lovable Cloud, plus a separate web admin panel and a Telegram bot for notifications.
+Major rework of the ads system with 5 ad networks, each on its own card opening a new view with watch buttons. Per-button 12h cooldown, per-network reward control, admin panel to manage buttons/rewards, withdrawal requirements use all networks.
 
-## 1. Backend setup (Lovable Cloud)
+### Ad Networks & Layout
 
-Enable Lovable Cloud and configure:
-- **Secrets**: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ADMIN_CHAT_ID=1889290764`, `CMC_API_KEY` (CoinMarketCap), `ADMIN_EMAIL`, `ADMIN_PASSWORD` (you set during signup).
-- **Bot**: register webhook for `@RosePayFibot` → `/api/public/telegram/webhook` (handles `/start` deep link with referral code).
+Each card on Watch tab. Tap card → opens a new view with N "Watch Ad" buttons. Each button: random ad from the network's block(s). After watching once, that button is locked for 12 hours.
 
-### Database tables
-- `users` — telegram_id (unique), username, first_name, photo_url, balance_rose, total_earned, total_ads, total_tasks, total_withdraw, ref_by, ref_code, ip_address, suspended, created_at
-- `app_settings` — key/value (min_withdraw, ref_bonus=1, ref_commission=10%, min_refs=2, min_daily_ads=10, rose_price_override, watch_enabled=false, etc.)
-- `tasks` — type (main/partner/other), title, channel_url, amount, description, requires_screenshot, active
-- `task_completions` — user_id, task_id, status (pending/approved/rejected), screenshot_url, created_at
-- `reward_codes` — code, amount, max_uses, used_count, active
-- `reward_code_claims` — code_id, user_id (unique pair)
-- `referrals` — referrer_id, referred_id, status (pending/claimable/claimed), bonus_amount
-- `withdrawals` — user_id, amount, wallet_address, status (pending/approved/rejected), tx_id, created_at
-- `admins` — email, password_hash (separate from telegram users)
-- `audit_log` — for anti-cheat tracking
+| Network | Buttons | Status | SDK |
+|---|---|---|---|
+| Adsgram | 20 | Active | existing `<adsgram-task>` / `window.Adsgram` |
+| Monetag | 10 | Active | `//libtl.com/sdk.js` zone `11012677`, `window.show_11012677()` |
+| Monetix | 10 | Coming soon (no SDK yet) | — |
+| GigaPub | 10 | Active | `https://ad.gigapub.tech/script?id=6899`, `window.showGiga()` |
+| Adexium | 5 | Coming soon | — |
 
-All tables use RLS. Service role used by server functions for trusted writes.
+**Reward rule:** reward credited only when the SDK promise resolves (ad was actually shown). Errors / closed early = no reward.
 
-## 2. Telegram Mini App (frontend)
+### Database
 
-Auth via `Telegram.WebApp.initData` validated server-side with bot token HMAC. Auto-creates user on first open.
+New migration:
 
-### Screens (bottom tab nav: Home · Task · Watch · Refer · Profile)
+```sql
+-- per-network configuration (reward, button count, enabled)
+create table public.ad_networks (
+  key text primary key,            -- 'adsgram' | 'monetag' | 'monetix' | 'gigapub' | 'adexium'
+  label text not null,
+  reward numeric(12,4) not null default 0.001,
+  button_count int not null default 10,
+  enabled boolean not null default true,
+  coming_soon boolean not null default false,
+  sort_order int not null default 0,
+  updated_at timestamptz default now()
+);
+-- seed: adsgram(20,active), monetag(10,active), monetix(10,coming), gigapub(10,active), adexium(5,coming)
 
-**Splash** — Logo with neon pink glow + petal/scale animations (3s) before app loads.
+-- per-button cooldown tracking (user x network x slot)
+create table public.ad_button_watches (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.app_users(id) on delete cascade,
+  network text not null,
+  slot int not null,
+  watched_at timestamptz not null default now(),
+  reward numeric(12,4) not null,
+  unique (user_id, network, slot, watched_at)
+);
+create index on public.ad_button_watches (user_id, network, watched_at desc);
+```
 
-**Notification permission prompt** — On first open, banner asking to enable bot notifications. Tap → opens bot, sends `/start`, dismisses permanently.
+Grants + RLS (service_role only; all access via server fns).
 
-**Home**
-- Top: Telegram avatar + username
-- Custom Rose token coin icon (we'll generate it)
-- Balance card (animated count-up)
-- Stats grid: Total Earn, Total Ads, Total Tasks, Total Withdraw
-- Reward Code claim card with "Join Community" button → https://t.me/rosepayfi
-- Mini app guide section (collapsible cards)
+### Server functions (`src/lib/api.functions.ts`)
 
-**Task tab**
-- Sections: Main Tasks, Partner Tasks, Other Tasks
-- Main/Partner: Channel title, amount, [Start] → reveals [Open] [Verify]. Verify calls Telegram `getChatMember` via bot to check membership; on success credits user, on fail shows "Not joined yet".
-- Other: title, amount, [Start] → description + [Open] + screenshot upload. Submit → creates pending completion + bot DM to admin (1889290764). Admin approves/rejects from panel; user gets bot notification.
+- `listAdNetworks()` — returns networks + per-button `nextAvailableAt` for current user (12h since last watch on that slot).
+- `claimAdReward({ network, slot })` — verifies network enabled & not coming soon, verifies slot is off cooldown, inserts `ad_button_watches`, credits `app_users.balance` + `total_earned` + `total_ads_today`.
+- `getWithdrawEligibility()` — extended to sum watches across all networks if needed (keep current rules; just expose counts per network).
 
-**Watch tab** (center, larger) — "Coming Soon" placeholder. Withdrawals locked while ads count = 0.
+### Admin (`src/lib/admin.functions.ts` + `src/routes/admin.tsx`)
 
-**Refer tab**
-- Refer link: `https://t.me/RosePayFibot?start=<ref_code>`
-- Stats: total referrals, total commission, pending bonuses
-- Note: "Referral bonus (1 ROSE) credits AFTER referee completes all main + partner tasks"
-- 10% lifetime commission on referee earnings (auto)
-- Pending referral list with Claim buttons (when referee is eligible)
-- Leaderboard button → top 100 referrers
+New "Manage Ads" tab:
+- List all networks
+- Edit reward, button_count, enabled, coming_soon
+- Save via `adminUpdateAdNetwork({ key, ... })`
 
-**Profile / Withdraw**
-- Top: avatar, username, copyable Telegram ID
-- Available balance (live ROSE → USD via CoinMarketCap, 5min cache)
-- [Withdraw] button → checks min_withdraw + min 2 refs + min 10 daily ads; otherwise shows requirement
-- Withdraw form: amount (with [Max]), Oasis network address (saved after first use, editable), [Submit]
-- History list with status; tap → details view (amount, address, status, tx_id, timestamps)
+### UI
 
-### Visual design
-- Background: dark purple→pink gradient with neon city silhouette + floating rose petals (matching uploaded image)
-- Cards: glassmorphism + per-card neon accent colors (pink, purple, gold, cyan)
-- Card flip / slide-in animations via framer-motion
-- Pop-up reward toast on every credit
-- Custom Rose coin SVG/PNG (generated)
+**`src/components/WatchTab.tsx`**
+- Replace current task list with stacked cards (one per network, sorted).
+- Card click → `setActiveNetwork(key)` which renders a full-screen panel with the button grid.
+- Coming-soon cards open a coming-soon panel (or are disabled — show "Coming soon" badge, no navigation).
+- Daily bonus card stays.
 
-## 3. Anti-cheat
-- All balance changes happen only inside server functions; client never writes balances
-- Verify Telegram channel join via bot `getChatMember` (not client-trusted)
-- IP tracking on signup → second account from same IP auto-suspended (first stays), bot notifies admin
-- Rate limits on claim/verify endpoints
-- Withdraw gated by refs + ads count
+**`src/components/AdNetworkPanel.tsx`** (new)
+- Header with back button and network name.
+- Grid of buttons (1..N). Each button shows: "Watch Ad #i" + countdown if on cooldown.
+- On click: call network-specific SDK. If success → call `claimAdReward`. If error/closed → no claim, toast.
 
-## 4. Admin Panel (separate web URL: `/admin`)
-Email/password login (stored in `admins` table, bcrypt). Sections:
-- **Dashboard** — totals, recent activity
-- **Users** — list, search, view profile, suspend/unsuspend, edit balance, view referral history
-- **Tasks** — CRUD for main/partner/other tasks
-- **Task submissions** — pending screenshots queue, approve/reject (sends bot notification)
-- **Withdrawals** — pending queue, approve with TX ID input → posts to https://t.me/rosepayfipayment via bot with [View Transaction] + [Open Mini App] buttons; also DMs user
-- **Reward Codes** — create code + amount + max uses, view claims
-- **Referrals** — full
+**SDK loading** (`src/components/AdsLoader.tsx` or in root):
+- Inject Monetag, GigaPub scripts once at app boot (Adsgram is already loaded).
+
+**Withdraw requirements (`ProfileTab.tsx`):**
+- Show pretty progress cards for each active network's per-day requirement (config from `app_settings`, or simply show "Watch X ads across all networks"). Use existing logic; restyle the counter to look nicer (gradient progress bars per network).
+
+### Daily reset at 00:00:00 Asia/Colombo
+
+Already implemented via `colomboDayStartUtc`. Verify all daily counters (ads, bonus) compare `last_*_at >= colomboDayStartUtc()` — fix any UTC leftovers.
+
+### Files to change
+
+- new: `supabase/migrations/<ts>_ad_networks.sql`
+- new: `src/components/AdNetworkPanel.tsx`
+- edit: `src/components/WatchTab.tsx` (full rewrite of card list)
+- edit: `src/components/ProfileTab.tsx` (prettier withdraw progress)
+- edit: `src/lib/api.functions.ts` (new server fns, daily reset audit)
+- edit: `src/lib/admin.functions.ts` (network CRUD)
+- edit: `src/routes/admin.tsx` (Manage Ads tab)
+- edit: `src/routes/__root.tsx` or new `AdsLoader.tsx` (script tags)
+
+### Open question
+
+Adsgram currently uses the `<adsgram-task>` element (task-style, not on-demand). For 20 individual "Watch Ad" buttons we need on-demand calls via `window.Adsgram.init({ blockId }).show()`. **Confirm you have the on-demand Adsgram block ID(s)** (you mentioned "two blocks — random pick"). If not provided, I'll wire it to use the existing task block ID as a placeholder and you can swap later in admin.

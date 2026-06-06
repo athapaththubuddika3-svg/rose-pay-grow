@@ -1145,3 +1145,133 @@ async function maybeActivateRefBonus(sb: any, userId: string) {
   }
 }
 
+
+// === Ad networks (multi-network watch system) ===
+export const listAdNetworks = createServerFn({ method: "POST" })
+  .inputValidator((d: { initData: string }) => z.object({ initData: z.string() }).parse(d))
+  .handler(async ({ data }) => {
+    const { sb, user } = await authUser(data.initData);
+    const { data: nets } = await sb
+      .from("ad_networks")
+      .select("*")
+      .order("sort_order", { ascending: true });
+    const networks = nets || [];
+
+    // Pull all watches in last 24h for cooldown calc
+    const since = new Date(Date.now() - 24 * 3600_000).toISOString();
+    const { data: recent } = await sb
+      .from("ad_button_watches")
+      .select("network, slot, watched_at")
+      .eq("user_id", user.id)
+      .gte("watched_at", since);
+
+    const latestPerSlot = new Map<string, number>();
+    for (const r of recent || []) {
+      const k = `${r.network}#${r.slot}`;
+      const t = new Date(r.watched_at).getTime();
+      const prev = latestPerSlot.get(k) || 0;
+      if (t > prev) latestPerSlot.set(k, t);
+    }
+
+    const now = Date.now();
+    const result = networks.map((n: any) => {
+      const cd = Number(n.cooldown_hours || 12) * 3600_000;
+      const count = Number(n.button_count || 0);
+      const slots = Array.from({ length: count }, (_, i) => {
+        const slot = i + 1;
+        const last = latestPerSlot.get(`${n.key}#${slot}`) || 0;
+        const nextAvailableMs = last ? Math.max(0, last + cd - now) : 0;
+        return { slot, nextAvailableMs };
+      });
+      const available = slots.filter((s) => s.nextAvailableMs <= 0).length;
+      return {
+        key: n.key,
+        label: n.label,
+        reward: Number(n.reward),
+        button_count: count,
+        enabled: !!n.enabled,
+        coming_soon: !!n.coming_soon,
+        cooldown_hours: Number(n.cooldown_hours || 12),
+        block_ids: Array.isArray(n.block_ids) ? n.block_ids : [],
+        sort_order: Number(n.sort_order || 0),
+        slots,
+        available,
+      };
+    });
+
+    return { networks: result };
+  });
+
+export const claimAdReward = createServerFn({ method: "POST" })
+  .inputValidator((d: { initData: string; network: string; slot: number }) =>
+    z
+      .object({
+        initData: z.string(),
+        network: z.string().min(1).max(32),
+        slot: z.number().int().min(1).max(50),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data }) => {
+    const { sb, user } = await authUser(data.initData);
+    if (user.suspended) throw new Error("Account suspended");
+    await balanceAudit(sb, user);
+
+    const { data: net } = await sb
+      .from("ad_networks")
+      .select("*")
+      .eq("key", data.network)
+      .maybeSingle();
+    if (!net) throw new Error("Unknown ad network");
+    if (!net.enabled || net.coming_soon) throw new Error("This network is not active");
+    if (data.slot < 1 || data.slot > Number(net.button_count)) throw new Error("Invalid slot");
+
+    const cd = Number(net.cooldown_hours || 12) * 3600_000;
+    const { data: last } = await sb
+      .from("ad_button_watches")
+      .select("watched_at")
+      .eq("user_id", user.id)
+      .eq("network", data.network)
+      .eq("slot", data.slot)
+      .order("watched_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (last) {
+      const remain = new Date(last.watched_at).getTime() + cd - Date.now();
+      if (remain > 0) {
+        return { ok: false, cooldown: true, remainMs: remain, message: "Cooldown active" };
+      }
+    }
+
+    const reward = Number(net.reward);
+    await sb.from("ad_button_watches").insert({
+      user_id: user.id,
+      network: data.network,
+      slot: data.slot,
+      reward,
+    });
+
+    // Daily counters (Colombo reset) used by withdraw requirements
+    const now = new Date();
+    let dailyCount = user.daily_ads_count || 0;
+    let dailyResetAt = user.daily_ads_reset_at ? new Date(user.daily_ads_reset_at) : new Date(0);
+    if (isNewColomboDay(dailyResetAt, now)) {
+      dailyCount = 0;
+      dailyResetAt = now;
+    }
+    dailyCount += 1;
+
+    await sb
+      .from("app_users")
+      .update({
+        balance: Number(user.balance) + reward,
+        total_earned: Number(user.total_earned) + reward,
+        total_ads: (user.total_ads || 0) + 1,
+        daily_ads_count: dailyCount,
+        daily_ads_reset_at: dailyResetAt.toISOString(),
+      })
+      .eq("id", user.id);
+
+    await payCommission(sb, user, reward);
+    return { ok: true, amount: reward, nextAvailableMs: cd };
+  });
