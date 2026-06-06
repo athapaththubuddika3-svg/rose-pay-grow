@@ -18,6 +18,7 @@ declare global {
       init: (opts: { blockId: string }) => AdController;
     };
     show_11012677?: (opts?: any) => Promise<any>;
+    showGiga?: () => Promise<any>;
   }
 
   namespace JSX {
@@ -34,6 +35,7 @@ declare global {
   }
 }
 
+
 interface AdController {
   show: () => Promise<{ done: boolean; description?: string; state?: string; error?: boolean }>;
   destroy?: () => void;
@@ -48,9 +50,13 @@ interface Ctx {
     blockId: string,
   ) => Promise<{ ok: boolean; durationSec: number; error?: string }>;
   openMonetagReward: (requestVar?: string) => Promise<{ ok: boolean; rewardGranted: boolean; error?: string }>;
+  showAdsgramBlock: (blockId: string) => Promise<{ ok: boolean; error?: string }>;
+  showMonetag: () => Promise<{ ok: boolean; error?: string }>;
+  showGigaPub: () => Promise<{ ok: boolean; error?: string }>;
   taskReady: boolean;
   taskBlockId: string;
 }
+
 
 const AdsCtx = createContext<Ctx | null>(null);
 
